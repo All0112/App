@@ -11,6 +11,9 @@ const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let currentUser = null;
 let chart = null;
 
+// CORREÇÃO: A variável 'currentMonth' agora é inicializada globalmente.
+let currentMonth = new Date().toISOString().slice(0, 7);
+
 // Estrutura de dados padrão para novos usuários e estado local
 let budgetData = {
     monthlyIncome: 0,
@@ -41,24 +44,31 @@ async function loginUser(username) {
             .eq('username', username)
             .single();
 
-        if (error && error.code !== 'PGRST116') throw error; // Ignora apenas erro 'not found'
+        if (error && error.code !== 'PGRST116') throw error;
 
-        if (!user) {
+        if (user) {
+            showLoginMessage('Login realizado com sucesso!', 'success');
+        } else {
             console.log(`Criando novo usuário: ${username}`);
+            // Usa uma estrutura de dados inicial limpa
+            const defaultData = {
+                monthlyIncome: 0,
+                percentages: {},
+                expenses: {},
+                currentMonth: new Date().toISOString().slice(0, 7)
+            };
             const { data: newUser, error: insertError } = await supabaseClient
                 .from('Usuarios')
-                .insert({ username: username, dados_orcamento: budgetData })
+                .insert({ username: username, dados_orcamento: defaultData })
                 .select()
                 .single();
             if (insertError) throw insertError;
             user = newUser;
             showLoginMessage('Conta criada com sucesso!', 'success');
-        } else {
-            showLoginMessage('Login realizado com sucesso!', 'success');
         }
 
         currentUser = user;
-        budgetData = user.dados_orcamento || budgetData;
+        loadUserDataFromCloud(user);
         showMainApp();
 
     } catch (err) {
@@ -69,9 +79,21 @@ async function loginUser(username) {
     }
 }
 
+function loadUserDataFromCloud(user) {
+    console.log('📥 Carregando dados do usuário da nuvem...');
+    budgetData = user.dados_orcamento || { monthlyIncome: 0, percentages: {}, expenses: {} };
+    // CORREÇÃO: Atualiza a variável global 'currentMonth' com os dados do usuário
+    currentMonth = budgetData.currentMonth || new Date().toISOString().slice(0, 7);
+    console.log('✅ Dados carregados da nuvem.');
+}
+
 async function saveUserData() {
     if (!currentUser) return;
     setSyncStatus('Salvando...');
+    
+    // Garante que o mês atual seja salvo junto com os outros dados
+    budgetData.currentMonth = currentMonth;
+
     const { error } = await supabaseClient
         .from('Usuarios')
         .update({ dados_orcamento: budgetData })
@@ -86,8 +108,9 @@ async function saveUserData() {
     }
 }
 
+
 // ==========================================================
-// LÓGICA DA INTERFACE (UI)
+// LÓGICA DA INTERFACE (UI) - (sem grandes alterações)
 // ==========================================================
 
 function showMainApp() {
@@ -113,9 +136,8 @@ function renderAll() {
 }
 
 function updateDashboard() {
-    const month = document.getElementById('month-year').value;
     const monthlyIncome = budgetData.monthlyIncome || 0;
-    const expensesForMonth = budgetData.expenses[month] || [];
+    const expensesForMonth = budgetData.expenses[currentMonth] || [];
     
     document.getElementById('dashboard-income').textContent = formatCurrency(monthlyIncome);
     
@@ -125,8 +147,10 @@ function updateDashboard() {
 
 function updateSummaryTable(income, expenses) {
     const summaryBody = document.getElementById('summary-body');
+    const tfoot = document.querySelector('#budget-summary tfoot');
     summaryBody.innerHTML = '';
     
+    let totalBudgeted = 0;
     let totalSpent = 0;
     
     for (const id in CATEGORIES) {
@@ -135,6 +159,8 @@ function updateSummaryTable(income, expenses) {
         const spent = expenses
             .filter(e => e.category === id)
             .reduce((sum, e) => sum + e.amount, 0);
+        
+        totalBudgeted += budgeted;
         totalSpent += spent;
         
         const row = `
@@ -143,11 +169,19 @@ function updateSummaryTable(income, expenses) {
                 <td>${formatCurrency(budgeted)}</td>
                 <td>${formatCurrency(spent)}</td>
                 <td>${formatCurrency(budgeted - spent)}</td>
+                <td>${budgeted > 0 ? ((spent / budgeted) * 100).toFixed(1) : 0}%</td>
             </tr>
         `;
         summaryBody.innerHTML += row;
     }
+    
+    // Atualiza os totais no rodapé
+    tfoot.querySelector('#total-budget').textContent = formatCurrency(totalBudgeted);
+    tfoot.querySelector('#total-spent').textContent = formatCurrency(totalSpent);
+    tfoot.querySelector('#total-remaining').textContent = formatCurrency(totalBudgeted - totalSpent);
+    tfoot.querySelector('#total-used').textContent = totalBudgeted > 0 ? `${((totalSpent / totalBudgeted) * 100).toFixed(1)}%` : '0%';
 }
+
 
 function updateChart(expenses) {
     const ctx = document.getElementById('expenses-chart').getContext('2d');
@@ -162,8 +196,9 @@ function updateChart(expenses) {
     };
 
     if (chart) chart.destroy();
-    chart = new Chart(ctx, { type: 'doughnut', data: data, options: { responsive: true, maintainAspectRatio: false } });
+    chart = new Chart(ctx, { type: 'doughnut', data: data, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } });
 }
+
 
 function renderCategorySliders() {
     const container = document.getElementById('category-sliders-container');
@@ -192,12 +227,11 @@ function renderExpenseCategoryDropdown() {
 }
 
 function renderExpensesList() {
-    const month = document.getElementById('month-year').value;
-    document.getElementById('current-month-label').textContent = month;
+    document.getElementById('current-month-label').textContent = currentMonth;
     const container = document.getElementById('expenses-list-container');
     container.innerHTML = '';
 
-    const expensesForMonth = budgetData.expenses[month] || [];
+    const expensesForMonth = budgetData.expenses[currentMonth] || [];
     if (expensesForMonth.length === 0) {
         container.innerHTML = '<p>Nenhum gasto neste mês.</p>';
         return;
@@ -241,20 +275,18 @@ function populateMonthSelector() {
         const label = new Date(year, i - 1).toLocaleString('pt-BR', { month: 'long' });
         select.innerHTML += `<option value="${value}">${label.charAt(0).toUpperCase() + label.slice(1)} ${year}</option>`;
     }
+    // CORREÇÃO: Usa a variável global 'currentMonth' que agora está sempre definida
     select.value = currentMonth;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Event listener para o botão de login
     document.getElementById('login-btn').addEventListener('click', () => {
         const username = document.getElementById('username').value.trim();
         if (username) loginUser(username);
     });
     
-    // Event listener para o botão de logout
     document.getElementById('logout-btn').addEventListener('click', logout);
 
-    // Event listener para a troca de abas
     document.querySelector('.tabs-navigation').addEventListener('click', (e) => {
         if (e.target.matches('.tab-button')) {
             document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
@@ -264,38 +296,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Event listener para o input de renda mensal
     document.getElementById('monthly-income').addEventListener('change', (e) => {
         budgetData.monthlyIncome = parseFloat(e.target.value) || 0;
         updateDashboard();
         saveUserData();
     });
 
-    // Event listener para os sliders de categoria (usando delegação de eventos)
     document.getElementById('category-sliders-container').addEventListener('input', (e) => {
         if (e.target.matches('input[type="range"]')) {
             const categoryId = e.target.dataset.category;
             const value = parseFloat(e.target.value);
             budgetData.percentages[categoryId] = value;
-            e.target.nextElementSibling.textContent = `${value}%`; // Atualiza a porcentagem na tela
+            e.target.nextElementSibling.textContent = `${value}%`;
             updateDashboard();
             saveUserData();
         }
     });
 
-    // Event listener para adicionar um novo gasto
     document.getElementById('add-expense').addEventListener('click', () => {
-        const month = document.getElementById('month-year').value;
         const description = document.getElementById('expense-description').value.trim();
         const amount = parseFloat(document.getElementById('expense-amount').value);
         const category = document.getElementById('expense-category').value;
 
         if (!description || !amount) return alert('Preencha a descrição e o valor.');
 
-        if (!budgetData.expenses[month]) {
-            budgetData.expenses[month] = [];
+        if (!budgetData.expenses[currentMonth]) {
+            budgetData.expenses[currentMonth] = [];
         }
-        budgetData.expenses[month].push({ description, amount, category });
+        budgetData.expenses[currentMonth].push({ description, amount, category });
         
         renderExpensesList();
         updateDashboard();
@@ -305,9 +333,10 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('expense-amount').value = '';
     });
 
-    // Atualiza o dashboard quando o mês muda
-    document.getElementById('month-year').addEventListener('change', () => {
+    document.getElementById('month-year').addEventListener('change', (e) => {
+        currentMonth = e.target.value; // Atualiza a variável global
         updateDashboard();
         renderExpensesList();
+        saveUserData(); // Salva a mudança de mês
     });
 });
