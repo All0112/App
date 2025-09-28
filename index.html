@@ -4,12 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Orçamento Doméstico</title>
-    <link rel="stylesheet" href="style.css">
-    <!-- Supabase JS -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js"></script>
-<!-- Seu app.js -->
-<script src="app.js"></script>
 
+    <!-- CSS externo -->
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <!-- TELA DE LOGIN -->
@@ -21,21 +24,16 @@
                         <h1>💰 Orçamento Doméstico</h1>
                         <p>Faça login para acessar seus dados salvos na nuvem</p>
                     </div>
-                    
                     <div class="login-form">
                         <div class="form-group">
                             <label for="username" class="form-label">Nome de Usuário</label>
                             <input type="text" id="username" class="form-control" placeholder="Digite seu nome de usuário" autocomplete="username">
                         </div>
-                        
                         <button id="login-btn" class="btn btn--primary btn--full-width">
                             <span id="login-btn-text">Entrar</span>
-                            <span id="login-spinner" class="spinner hidden">⏳</span>
                         </button>
-                        
                         <div id="login-message" class="login-message hidden"></div>
                     </div>
-                    
                     <div class="login-footer">
                         <p>Se você não tem uma conta, ela será criada automaticamente</p>
                     </div>
@@ -46,18 +44,13 @@
 
     <!-- APLICATIVO PRINCIPAL -->
     <div id="main-app" class="container hidden">
-        <!-- User Info Header -->
         <div class="user-header">
             <div class="user-info">
                 <span>👤 Usuário: <strong id="current-username"></strong></span>
-                <div class="sync-status">
-                    <span id="sync-indicator" class="sync-indicator">🔄 Sincronizando...</span>
-                </div>
             </div>
             <button id="logout-btn" class="btn btn--outline btn--sm">Sair</button>
         </div>
 
-        <!-- Navegação das Abas -->
         <div class="tabs-navigation">
             <button class="tab-button active" data-tab="dashboard">📊 Orçamento Doméstico</button>
             <button class="tab-button" data-tab="configurar">⚙️ Configurar Orçamento</button>
@@ -66,7 +59,6 @@
 
         <!-- ABA DASHBOARD -->
         <div id="tab-dashboard" class="tab-content active">
-            <!-- Top Section -->
             <div class="dashboard-header">
                 <div class="dashboard-title">
                     <h1>Orçamento Doméstico</h1>
@@ -85,77 +77,55 @@
                 <div class="income-display">
                     <div class="income-label">Renda Mensal</div>
                     <div class="income-value" id="dashboard-income">R$ 20.000,00</div>
-                    <div class="income-indicator"></div>
                 </div>
             </div>
 
-            <!-- Main Dashboard Content - 3 Columns -->
             <div class="dashboard-main">
-                <!-- Column 1: Chart -->
                 <div class="dashboard-column chart-column">
                     <div class="card">
                         <div class="card__body">
                             <h3>Gastos por Categoria</h3>
-                            <div class="chart-container" style="position: relative; height: 300px;">
-                                <canvas id="expenses-chart"></canvas>
-                            </div>
-                            <div class="chart-legend" id="chart-legend"></div>
+                            <canvas id="expenses-chart" style="height:300px;"></canvas>
                         </div>
                     </div>
                 </div>
 
-                <!-- Column 2: Summary Table -->
                 <div class="dashboard-column summary-column">
                     <div class="card">
                         <div class="card__body">
                             <h3>Resumo</h3>
-                            <div class="summary-table">
-                                <table id="budget-summary">
-                                    <thead>
-                                        <tr>
-                                            <th>Categoria</th>
-                                            <th>Orçamento</th>
-                                            <th>Gasto</th>
-                                            <th>Restante</th>
-                                            <th>Usado</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="summary-body">
-                                        <!-- Dynamically populated -->
-                                    </tbody>
-                                    <tfoot>
-                                        <tr class="summary-totals">
-                                            <td><strong>Total</strong></td>
-                                            <td id="total-budget"><strong>R$ 0,00</strong></td>
-                                            <td id="total-spent"><strong>R$ 0,00</strong></td>
-                                            <td id="total-remaining"><strong>R$ 0,00</strong></td>
-                                            <td id="total-used"><strong>0%</strong></td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
+                            <table id="budget-summary">
+                                <thead>
+                                    <tr>
+                                        <th>Categoria</th>
+                                        <th>Orçamento</th>
+                                        <th>Gasto</th>
+                                        <th>Restante</th>
+                                        <th>Usado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="summary-body"></tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td><strong>Total</strong></td>
+                                        <td id="total-budget"><strong>R$ 0,00</strong></td>
+                                        <td id="total-spent"><strong>R$ 0,00</strong></td>
+                                        <td id="total-remaining"><strong>R$ 0,00</strong></td>
+                                        <td id="total-used"><strong>0%</strong></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
                         </div>
                     </div>
                 </div>
 
-                <!-- Column 3: Goals -->
                 <div class="dashboard-column goals-column">
                     <div class="card">
                         <div class="card__body">
                             <h3>Metas</h3>
-                            <div class="goals-list" id="goals-list">
-                                <!-- Dynamically populated -->
-                            </div>
+                            <div class="goals-list" id="goals-list"></div>
                         </div>
                     </div>
-                </div>
-            </div>
-
-            <!-- Category Details Cards -->
-            <div class="category-details">
-                <h3>Detalhes por Categoria</h3>
-                <div class="category-cards-grid" id="category-details-grid">
-                    <!-- Dynamically populated -->
                 </div>
             </div>
         </div>
@@ -164,191 +134,39 @@
         <div id="tab-configurar" class="tab-content">
             <header class="header">
                 <h2>Configurar Orçamento</h2>
-                <p>Configure as porcentagens do seu orçamento doméstico</p>
             </header>
-
-            <!-- Configuration Management Section -->
             <div class="config-section">
-                <div class="card">
-                    <div class="card__body">
-                        <h3>Configurações Nomeadas</h3>
-                        
-                        <div class="config-row">
-                            <div class="form-group">
-                                <label for="config-name" class="form-label">Nome da Configuração</label>
-                                <input type="text" id="config-name" class="form-control" placeholder="Ex: Casa, Viagem, Emergência">
-                            </div>
-                            <button id="save-config" class="btn btn--primary">Salvar Como</button>
-                        </div>
-
-                        <div class="config-row">
-                            <div class="form-group">
-                                <label for="load-name" class="form-label">Carregar Configuração</label>
-                                <input type="text" id="load-name" class="form-control" placeholder="Digite o nome para carregar">
-                            </div>
-                            <button id="load-config" class="btn btn--secondary">Carregar</button>
-                        </div>
-
-                        <div class="saved-configs">
-                            <div class="saved-configs-header">
-                                <span class="saved-configs-label">Configurações Salvas:</span>
-                                <div id="saved-configs-list" class="saved-configs-items"></div>
-                            </div>
-                        </div>
-
-                        <div id="feedback-message" class="feedback-message hidden"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="income-section">
                 <div class="card">
                     <div class="card__body">
                         <div class="form-group">
                             <label for="monthly-income" class="form-label">Valor Mensal Total (R$)</label>
-                            <input type="number" id="monthly-income" class="form-control" placeholder="20000.00" min="0" step="0.01">
+                            <input type="number" id="monthly-income" class="form-control" placeholder="20000.00">
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="summary-section">
-                <div class="card">
-                    <div class="card__body">
-                        <div class="summary-header">
-                            <h3>Resumo das Porcentagens</h3>
-                            <div class="total-percentage">
-                                <span>Total: </span>
-                                <span id="total-percentage" class="percentage-value">100,0%</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="categories-section">
-                <div class="categories-grid">
-                    <div class="category-card card" data-category="custos-fixos">
-                        <div class="card__body">
-                            <div class="category-header">
-                                <h4 class="category-name">Custos fixos</h4>
-                                <div class="category-color-indicator" style="background-color: #e74c3c;"></div>
-                            </div>
-                            <div class="category-controls">
-                                <div class="slider-container">
-                                    <input type="range" id="custos-fixos" class="category-slider" min="0" max="100" value="40" step="0.1">
-                                    <div class="slider-value">
-                                        <span id="percent-custos-fixos">40,0%</span>
+                        <div class="categories-section">
+                            <div class="categories-grid">
+                                <div class="category-card card">
+                                    <div class="card__body">
+                                        <label>Custos fixos</label>
+                                        <input type="range" id="custos-fixos" class="category-slider" min="0" max="100" value="40" step="0.1">
+                                        <span id="percent-custos-fixos">40%</span>
+                                        <span id="value-custos-fixos">R$ 0,00</span>
                                     </div>
                                 </div>
-                                <div class="category-amount">
-                                    <span class="amount-label">Valor:</span>
-                                    <span id="value-custos-fixos" class="amount-value">R$ 0,00</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="category-card card" data-category="conforto">
-                        <div class="card__body">
-                            <div class="category-header">
-                                <h4 class="category-name">Conforto</h4>
-                                <div class="category-color-indicator" style="background-color: #3498db;"></div>
-                            </div>
-                            <div class="category-controls">
-                                <div class="slider-container">
-                                    <input type="range" id="conforto" class="category-slider" min="0" max="100" value="20" step="0.1">
-                                    <div class="slider-value">
-                                        <span id="percent-conforto">20,0%</span>
+                                <div class="category-card card">
+                                    <div class="card__body">
+                                        <label>Conforto</label>
+                                        <input type="range" id="conforto" class="category-slider" min="0" max="100" value="20" step="0.1">
+                                        <span id="percent-conforto">20%</span>
+                                        <span id="value-conforto">R$ 0,00</span>
                                     </div>
                                 </div>
-                                <div class="category-amount">
-                                    <span class="amount-label">Valor:</span>
-                                    <span id="value-conforto" class="amount-value">R$ 0,00</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="category-card card" data-category="metas">
-                        <div class="card__body">
-                            <div class="category-header">
-                                <h4 class="category-name">Metas</h4>
-                                <div class="category-color-indicator" style="background-color: #2ecc71;"></div>
-                            </div>
-                            <div class="category-controls">
-                                <div class="slider-container">
-                                    <input type="range" id="metas" class="category-slider" min="0" max="100" value="5" step="0.1">
-                                    <div class="slider-value">
-                                        <span id="percent-metas">5,0%</span>
+                                <div class="category-card card">
+                                    <div class="card__body">
+                                        <label>Metas</label>
+                                        <input type="range" id="metas" class="category-slider" min="0" max="100" value="5" step="0.1">
+                                        <span id="percent-metas">5%</span>
+                                        <span id="value-metas">R$ 0,00</span>
                                     </div>
-                                </div>
-                                <div class="category-amount">
-                                    <span class="amount-label">Valor:</span>
-                                    <span id="value-metas" class="amount-value">R$ 0,00</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="category-card card" data-category="prazeres">
-                        <div class="card__body">
-                            <div class="category-header">
-                                <h4 class="category-name">Prazeres</h4>
-                                <div class="category-color-indicator" style="background-color: #f39c12;"></div>
-                            </div>
-                            <div class="category-controls">
-                                <div class="slider-container">
-                                    <input type="range" id="prazeres" class="category-slider" min="0" max="100" value="5" step="0.1">
-                                    <div class="slider-value">
-                                        <span id="percent-prazeres">5,0%</span>
-                                    </div>
-                                </div>
-                                <div class="category-amount">
-                                    <span class="amount-label">Valor:</span>
-                                    <span id="value-prazeres" class="amount-value">R$ 0,00</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="category-card card" data-category="liberdade-financeira">
-                        <div class="card__body">
-                            <div class="category-header">
-                                <h4 class="category-name">Liberdade Financeira</h4>
-                                <div class="category-color-indicator" style="background-color: #9b59b6;"></div>
-                            </div>
-                            <div class="category-controls">
-                                <div class="slider-container">
-                                    <input type="range" id="liberdade-financeira" class="category-slider" min="0" max="100" value="25" step="0.1">
-                                    <div class="slider-value">
-                                        <span id="percent-liberdade-financeira">25,0%</span>
-                                    </div>
-                                </div>
-                                <div class="category-amount">
-                                    <span class="amount-label">Valor:</span>
-                                    <span id="value-liberdade-financeira" class="amount-value">R$ 0,00</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="category-card card" data-category="conhecimento">
-                        <div class="card__body">
-                            <div class="category-header">
-                                <h4 class="category-name">Conhecimento</h4>
-                                <div class="category-color-indicator" style="background-color: #1abc9c;"></div>
-                            </div>
-                            <div class="category-controls">
-                                <div class="slider-container">
-                                    <input type="range" id="conhecimento" class="category-slider" min="0" max="100" value="5" step="0.1">
-                                    <div class="slider-value">
-                                        <span id="percent-conhecimento">5,0%</span>
-                                    </div>
-                                </div>
-                                <div class="category-amount">
-                                    <span class="amount-label">Valor:</span>
-                                    <span id="value-conhecimento" class="amount-value">R$ 0,00</span>
                                 </div>
                             </div>
                         </div>
@@ -359,67 +177,29 @@
 
         <!-- ABA GASTOS -->
         <div id="tab-gastos" class="tab-content">
-            <header class="header">
-                <h2>Gastos Mensais</h2>
-                <p>Acompanhe seus gastos por categoria</p>
-            </header>
-
+            <header class="header"><h2>Gastos Mensais</h2></header>
             <div class="expenses-section">
                 <div class="card">
                     <div class="card__body">
-                        <div class="expenses-header">
-                            <h3>Adicionar Gasto</h3>
+                        <div class="form-group">
+                            <label for="expense-category">Categoria</label>
+                            <select id="expense-category" class="form-control">
+                                <option value="custos-fixos">Custos fixos</option>
+                                <option value="conforto">Conforto</option>
+                                <option value="metas">Metas</option>
+                            </select>
                         </div>
-                        
-                        <div class="expense-form">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="expense-category" class="form-label">Categoria</label>
-                                    <select id="expense-category" class="form-control">
-                                        <option value="custos-fixos">Custos fixos</option>
-                                        <option value="conforto">Conforto</option>
-                                        <option value="metas">Metas</option>
-                                        <option value="prazeres">Prazeres</option>
-                                        <option value="liberdade-financeira">Liberdade Financeira</option>
-                                        <option value="conhecimento">Conhecimento</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="expense-description" class="form-label">Descrição</label>
-                                    <input type="text" id="expense-description" class="form-control" placeholder="Ex: Conta de luz">
-                                </div>
-                                <div class="form-group">
-                                    <label for="expense-type" class="form-label">Tipo</label>
-                                    <select id="expense-type" class="form-control">
-                                        <option value="unica">🔹 Única</option>
-                                        <option value="fixa">🔸 Fixa</option>
-                                        <option value="parcelada">🔺 Parcelada</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="expense-amount" class="form-label">Valor (R$)</label>
-                                    <input type="number" id="expense-amount" class="form-control" placeholder="150.00" min="0" step="0.01">
-                                </div>
-                                <button id="add-expense" class="btn btn--primary">Adicionar</button>
-                            </div>
+                        <div class="form-group">
+                            <label for="expense-description">Descrição</label>
+                            <input type="text" id="expense-description" class="form-control">
                         </div>
+                        <div class="form-group">
+                            <label for="expense-amount">Valor (R$)</label>
+                            <input type="number" id="expense-amount" class="form-control">
+                        </div>
+                        <button id="add-expense" class="btn btn--primary">Adicionar</button>
                     </div>
                 </div>
-
                 <div class="expenses-list">
                     <div class="card">
-                        <div class="card__body">
-                            <h3>Gastos do Mês</h3>
-                            <div class="expenses-categories-grid" id="expenses-categories-grid">
-                                <!-- Dynamically populated with 6 columns -->
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="app.js"></script>
-</body>
-</html>
+                        <div class="card__body" id="expenses-categories-grid"></div
