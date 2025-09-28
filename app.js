@@ -1,187 +1,345 @@
-// ----------------------- SUPABASE -----------------------
-const SUPABASE_URL = 'https://iballqwxsxkpltyustgj.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYWxscXd4c3hrcGx0eXVzdGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwNTc2MzAsImV4cCI6MjA3NDYzMzYzMH0.Z4WKcwVS5FFfbtaaiyBI0p348_v00pOYDYTq_6bDgGE';
+// =======================
+// CONFIGURAÇÃO DO SUPABASE
+// =======================
+const SUPABASE_URL = "https://SEU-PROJETO.supabase.co"; // substitua
+const SUPABASE_KEY = "SUA-CHAVE-ANONIMA"; // substitua
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Cliente real Supabase
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// ----------------------- VARIÁVEIS GLOBAIS -----------------------
 let currentUser = null;
-let isSyncing = false;
+let expensesChart = null;
 
-let monthlyIncome = 20000;
-let currentMonth = '2025-09';
-let chart = null;
-let percentages = {
-    'custos-fixos': 40,
-    'conforto': 20,
-    'metas': 5,
-    'prazeres': 5,
-    'liberdade-financeira': 25,
-    'conhecimento': 5
-};
-let expenses = {
-    '2025-09': [
-        { category: 'custos-fixos', description: 'Aluguel', amount: 3000, id: 1, type: 'fixa' },
-        { category: 'custos-fixos', description: 'Conta de luz', amount: 150, id: 2, type: 'fixa' },
-        { category: 'custos-fixos', description: 'Internet', amount: 80, id: 3, type: 'fixa' },
-        { category: 'conforto', description: 'Supermercado', amount: 800, id: 4, type: 'unica' },
-        { category: 'conforto', description: 'Restaurante', amount: 200, id: 5, type: 'unica' },
-        { category: 'metas', description: 'Investimento', amount: 500, id: 6, type: 'fixa' },
-        { category: 'prazeres', description: 'Cinema', amount: 50, id: 7, type: 'unica' },
-        { category: 'prazeres', description: 'Livros', amount: 80, id: 8, type: 'unica' },
-        { category: 'liberdade-financeira', description: 'Reserva de emergência', amount: 1000, id: 9, type: 'fixa' },
-        { category: 'conhecimento', description: 'Curso online', amount: 150, id: 10, type: 'parcelada' }
-    ]
-};
-let savedConfigurations = {};
-let nextExpenseId = 11;
+// =======================
+// ELEMENTOS DO DOM
+// =======================
+const loginScreen = document.getElementById("login-screen");
+const mainApp = document.getElementById("main-app");
+const loginBtn = document.getElementById("login-btn");
+const usernameInput = document.getElementById("username");
+const currentUsername = document.getElementById("current-username");
+const logoutBtn = document.getElementById("logout-btn");
+const tabButtons = document.querySelectorAll(".tab-button");
+const tabContents = document.querySelectorAll(".tab-content");
 
-const categories = {
-    'custos-fixos': { name: 'Custos fixos', color: '#1FB8CD' },
-    'conforto': { name: 'Conforto', color: '#FFC185' },
-    'metas': { name: 'Metas', color: '#B4413C' },
-    'prazeres': { name: 'Prazeres', color: '#ECEBD5' },
-    'liberdade-financeira': { name: 'Liberdade Financeira', color: '#5D878F' },
-    'conhecimento': { name: 'Conhecimento', color: '#DB4545' }
-};
-const chartColors = ['#1FB8CD', '#FFC185', '#B4413C', '#ECEBD5', '#5D878F', '#DB4545'];
-const expenseTypeIcons = { 'unica': '🔹', 'fixa': '🔸', 'parcelada': '🔺' };
+const categorySliders = document.querySelectorAll(".category-slider");
+const monthlyIncomeInput = document.getElementById("monthly-income");
 
-// ----------------------- SUPABASE FUNCTIONS -----------------------
-async function loginUser(username) {
-    if (!supabaseClient) return false;
+const dashboardIncome = document.getElementById("dashboard-income");
+const summaryBody = document.getElementById("summary-body");
+const totalBudgetEl = document.getElementById("total-budget");
+const totalSpentEl = document.getElementById("total-spent");
+const totalRemainingEl = document.getElementById("total-remaining");
+const totalUsedEl = document.getElementById("total-used");
+
+const expensesGrid = document.getElementById("expenses-categories-grid");
+
+// =======================
+// LOGIN / LOGOUT
+// =======================
+loginBtn.addEventListener("click", async () => {
+    const username = usernameInput.value.trim();
+    if (!username) return alert("Digite um nome de usuário!");
+
     try {
-        setSyncStatus('syncing', '🔄 Conectando...');
-        const { data: existingUser, error: selectError } = await supabaseClient
-            .from('usuarios')
-            .select('*')
-            .eq('username', username)
+        const { data: userData, error: userError } = await supabase
+            .from("usuarios")
+            .upsert({ username })
+            .select()
             .single();
 
-        let userData;
+        if (userError) throw userError;
 
-        if (existingUser) {
-            userData = existingUser;
-            showLoginMessage('Login realizado com sucesso!', 'success');
-        } else {
-            const defaultData = {
-                monthlyIncome: 20000,
-                percentages,
-                gastosPorMes: { '2025-09': [] },
-                savedConfigurations: {},
-                currentMonth: '2025-09',
-                currentYear: 2025
-            };
+        currentUser = userData;
+        showMainApp(username);
+        await carregarConfiguracoes();
+        await carregarGastos();
+    } catch (err) {
+        console.error(err);
+        alert("Erro ao logar!");
+    }
+});
 
-            const { data: newUser, error: insertError } = await supabaseClient
-                .from('usuarios')
-                .insert([{ username, dados_orcamento: defaultData }])
-                .select()
-                .single();
+logoutBtn.addEventListener("click", () => {
+    currentUser = null;
+    showLogin();
+    usernameInput.value = "";
+    expensesGrid.innerHTML = "";
+    if (expensesChart) expensesChart.destroy();
+});
 
-            if (insertError) throw insertError;
-            userData = newUser;
-            showLoginMessage('Conta criada e login realizado com sucesso!', 'success');
-        }
+// =======================
+// MOSTRAR TELAS
+// =======================
+function showMainApp(username) {
+    loginScreen.classList.add("hidden");
+    mainApp.classList.remove("hidden");
+    currentUsername.innerText = username;
+}
 
-        await loadUserDataFromCloud(userData);
-        currentUser = username;
-        showMainApp();
-        setSyncStatus('synced', '✅ Sincronizado');
-        return true;
+function showLogin() {
+    loginScreen.classList.remove("hidden");
+    mainApp.classList.add("hidden");
+}
 
-    } catch (error) {
-        console.error('Erro no login:', error);
-        setSyncStatus('error', '❌ Erro de conexão');
-        showLoginMessage('Erro ao fazer login: ' + (error.message || 'Erro desconhecido'), 'error');
-        return false;
+// =======================
+// TROCA DE ABAS
+// =======================
+tabButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+        const target = btn.dataset.tab;
+        tabButtons.forEach(b => b.classList.remove("active"));
+        tabContents.forEach(c => c.classList.remove("active"));
+
+        btn.classList.add("active");
+        document.getElementById(`tab-${target}`).classList.add("active");
+    });
+});
+
+// =======================
+// SLIDERS DE CATEGORIAS
+// =======================
+categorySliders.forEach(slider => {
+    slider.addEventListener("input", atualizarValores);
+});
+monthlyIncomeInput.addEventListener("input", atualizarValores);
+
+function atualizarValores() {
+    const monthlyIncome = parseFloat(monthlyIncomeInput.value) || 0;
+    categorySliders.forEach(slider => {
+        const percentSpan = document.getElementById(`percent-${slider.id}`);
+        const valueSpan = document.getElementById(`value-${slider.id}`);
+        percentSpan.innerText = `${parseFloat(slider.value).toFixed(1)}%`;
+        valueSpan.innerText = `R$ ${(monthlyIncome * slider.value / 100).toFixed(2)}`;
+    });
+
+    // Atualiza total
+    let total = 0;
+    categorySliders.forEach(slider => total += parseFloat(slider.value));
+    document.getElementById("total-percentage").innerText = `${total.toFixed(1)}%`;
+
+    dashboardIncome.innerText = `R$ ${monthlyIncome.toFixed(2)}`;
+}
+
+// =======================
+// CONFIGURAÇÕES
+// =======================
+document.getElementById("save-config").addEventListener("click", salvarConfiguracao);
+document.getElementById("load-config").addEventListener("click", carregarConfiguracoesPorNome);
+
+async function salvarConfiguracao() {
+    if (!currentUser) return alert("Usuário não logado!");
+
+    const nome = document.getElementById("config-name").value.trim();
+    if (!nome) return alert("Digite um nome para a configuração!");
+
+    const config = {
+        usuario_id: currentUser.id,
+        nome,
+        renda_mensal: parseFloat(monthlyIncomeInput.value) || 0,
+        custos_fixos: parseFloat(document.getElementById("custos-fixos").value),
+        conforto: parseFloat(document.getElementById("conforto").value),
+        metas: parseFloat(document.getElementById("metas").value),
+        prazeres: parseFloat(document.getElementById("prazeres").value),
+        liberdade_financeira: parseFloat(document.getElementById("liberdade-financeira").value),
+        conhecimento: parseFloat(document.getElementById("conhecimento").value)
+    };
+
+    try {
+        const { error } = await supabase.from("configuracoes").upsert(config);
+        if (error) throw error;
+        alert("Configuração salva!");
+    } catch (err) {
+        console.error(err);
+        alert("Erro ao salvar configuração!");
     }
 }
 
-async function loadUserDataFromCloud(userData) {
+async function carregarConfiguracoesPorNome() {
+    if (!currentUser) return;
+    const nome = document.getElementById("load-name").value.trim();
+    if (!nome) return alert("Digite o nome da configuração para carregar!");
+
     try {
-        const dadosOrcamento = userData.dados_orcamento || {};
-        monthlyIncome = dadosOrcamento.monthlyIncome || 20000;
-        percentages = dadosOrcamento.percentages || percentages;
-        expenses = dadosOrcamento.gastosPorMes || expenses;
-        savedConfigurations = dadosOrcamento.savedConfigurations || {};
-        currentMonth = dadosOrcamento.currentMonth || currentMonth;
-
-        let maxId = 0;
-        Object.values(expenses).forEach(monthExpenses => {
-            monthExpenses.forEach(expense => {
-                if (expense.id > maxId) maxId = expense.id;
-            });
-        });
-        nextExpenseId = maxId + 1;
-
-    } catch (error) {
-        console.error('Erro ao carregar dados:', error);
-    }
-}
-
-async function saveUserDataToCloud() {
-    if (!supabaseClient || !currentUser || isSyncing) return false;
-    try {
-        isSyncing = true;
-        setSyncStatus('syncing', '🔄 Salvando...');
-        const dadosOrcamento = { monthlyIncome, percentages, gastosPorMes: expenses, savedConfigurations, currentMonth, currentYear: parseInt(currentMonth.split('-')[0]) };
-        const { error } = await supabaseClient
-            .from('usuarios')
-            .update({ dados_orcamento: dadosOrcamento, updated_at: new Date().toISOString() })
-            .eq('username', currentUser);
+        const { data, error } = await supabase
+            .from("configuracoes")
+            .select("*")
+            .eq("usuario_id", currentUser.id)
+            .eq("nome", nome)
+            .single();
 
         if (error) throw error;
-        setSyncStatus('synced', '✅ Salvo');
-        return true;
-    } catch (error) {
-        console.error('Erro ao salvar dados:', error);
-        setSyncStatus('error', '❌ Erro ao salvar');
-        return false;
-    } finally {
-        isSyncing = false;
+        aplicarConfiguracao(data);
+    } catch (err) {
+        console.error(err);
+        alert("Erro ao carregar configuração!");
     }
 }
 
-// ----------------------- UI HELPERS -----------------------
-function showLoginScreen() { document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('main-app').classList.add('hidden'); }
-function showMainApp() { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('main-app').classList.remove('hidden'); document.getElementById('current-username').textContent = currentUser; updateAllDisplays(); }
-function showLoginMessage(msg, type = 'info') { const el = document.getElementById('login-message'); if(el){ el.textContent = msg; el.className=`login-message ${type}`; el.classList.remove('hidden'); } }
-function hideLoginMessage() { const el = document.getElementById('login-message'); if(el) el.classList.add('hidden'); }
-function setSyncStatus(status, text) { const el=document.getElementById('sync-indicator'); if(el){ el.textContent=text; el.className=`sync-indicator ${status}`;} }
-function logout() { currentUser=null; monthlyIncome=20000; currentMonth='2025-09'; percentages={ 'custos-fixos':40,'conforto':20,'metas':5,'prazeres':5,'liberdade-financeira':25,'conhecimento':5 }; expenses={}; savedConfigurations={}; nextExpenseId=1; showLoginScreen(); hideLoginMessage(); setSyncStatus('',''); }
+async function carregarConfiguracoes() {
+    if (!currentUser) return;
+    try {
+        const { data, error } = await supabase
+            .from("configuracoes")
+            .select("*")
+            .eq("usuario_id", currentUser.id)
+            .order("id", { ascending: true })
+            .limit(1);
 
-// ----------------------- EVENT HANDLERS -----------------------
-function setupLoginHandlers() {
-    const loginBtn = document.getElementById('login-btn');
-    const usernameInput = document.getElementById('username');
-    const logoutBtn = document.getElementById('logout-btn');
-
-    if(loginBtn && usernameInput){
-        loginBtn.addEventListener('click', async ()=>{
-            const username=usernameInput.value.trim();
-            if(!username){ showLoginMessage('Por favor, digite um nome de usuário','error'); return; }
-            loginBtn.disabled=true;
-            const success=await loginUser(username);
-            loginBtn.disabled=false;
-            if(success) usernameInput.value='';
-        });
-        usernameInput.addEventListener('keypress', (e)=>{if(e.key==='Enter') loginBtn.click();});
-        usernameInput.addEventListener('input', hideLoginMessage);
+        if (error) throw error;
+        if (data.length > 0) aplicarConfiguracao(data[0]);
+    } catch (err) {
+        console.error(err);
     }
-    if(logoutBtn) logoutBtn.addEventListener('click', ()=>{if(confirm('Tem certeza que deseja sair? Dados não salvos serão perdidos.')) logout();});
 }
 
-// ----------------------- UTILITIES -----------------------
-function formatCurrency(amount){ return isNaN(amount)?'R$ 0,00':'R$ '+amount.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-function formatPercentage(value){ return isNaN(value)?'0,0%':value.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%'; }
+function aplicarConfiguracao(config) {
+    monthlyIncomeInput.value = config.renda_mensal || 0;
+    document.getElementById("custos-fixos").value = config.custos_fixos || 0;
+    document.getElementById("conforto").value = config.conforto || 0;
+    document.getElementById("metas").value = config.metas || 0;
+    document.getElementById("prazeres").value = config.prazeres || 0;
+    document.getElementById("liberdade-financeira").value = config.liberdade_financeira || 0;
+    document.getElementById("conhecimento").value = config.conhecimento || 0;
 
-// ----------------------- INITIALIZATION -----------------------
-document.addEventListener('DOMContentLoaded', async function(){
-    console.log('🚀 Inicializando app...');
-    setupLoginHandlers();
-    initializeTabs();
-    setupEventHandlers();
-    showLoginScreen();
+    atualizarValores();
+}
+
+// =======================
+// GASTOS
+// =======================
+document.getElementById("add-expense").addEventListener("click", async () => {
+    if (!currentUser) return;
+
+    const categoria = document.getElementById("expense-category").value;
+    const descricao = document.getElementById("expense-description").value.trim();
+    const tipo = document.getElementById("expense-type").value;
+    const valor = parseFloat(document.getElementById("expense-amount").value) || 0;
+    const mes_ano = document.getElementById("month-year").value;
+
+    if (!descricao || valor <= 0) return alert("Preencha todos os campos corretamente!");
+
+    const gasto = { usuario_id: currentUser.id, categoria, descricao, tipo, valor, mes_ano };
+
+    try {
+        const { error } = await supabase.from("gastos").insert([gasto]);
+        if (error) throw error;
+        adicionarGastoNaTela(gasto);
+        atualizarDashboard();
+    } catch (err) {
+        console.error(err);
+        alert("Erro ao salvar gasto!");
+    }
+
+    document.getElementById("expense-description").value = "";
+    document.getElementById("expense-amount").value = "";
 });
+
+async function carregarGastos() {
+    if (!currentUser) return;
+
+    const mes_ano = document.getElementById("month-year").value;
+    try {
+        const { data, error } = await supabase
+            .from("gastos")
+            .select("*")
+            .eq("usuario_id", currentUser.id)
+            .eq("mes_ano", mes_ano);
+
+        if (error) throw error;
+
+        expensesGrid.innerHTML = "";
+        data.forEach(adicionarGastoNaTela);
+        atualizarDashboard(data);
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+function adicionarGastoNaTela(gasto) {
+    const card = document.createElement("div");
+    card.classList.add("expense-card", "card");
+    card.innerHTML = `
+        <div class="card__body">
+            <strong>${gasto.categoria}</strong><br>
+            ${gasto.descricao} - R$ ${gasto.valor.toFixed(2)} (${gasto.tipo})
+        </div>
+    `;
+    expensesGrid.appendChild(card);
+}
+
+// Atualiza gastos ao trocar mês
+document.getElementById("month-year").addEventListener("change", carregarGastos);
+
+// =======================
+// DASHBOARD - GRÁFICO E RESUMO
+// =======================
+function atualizarDashboard(gastos = []) {
+    const categorias = ["custos-fixos", "conforto", "metas", "prazeres", "liberdade-financeira", "conhecimento"];
+    const categoriaNomes = {
+        "custos-fixos": "Custos Fixos",
+        "conforto": "Conforto",
+        "metas": "Metas",
+        "prazeres": "Prazeres",
+        "liberdade-financeira": "Liberdade Financeira",
+        "conhecimento": "Conhecimento"
+    };
+
+    const totalPorCategoria = {};
+    categorias.forEach(c => totalPorCategoria[c] = 0);
+
+    gastos.forEach(g => {
+        if (totalPorCategoria[g.categoria] !== undefined) totalPorCategoria[g.categoria] += g.valor;
+    });
+
+    const totalGastos = Object.values(totalPorCategoria).reduce((a, b) => a + b, 0);
+    const renda = parseFloat(monthlyIncomeInput.value) || 0;
+
+    // Atualiza tabela resumo
+    summaryBody.innerHTML = "";
+    categorias.forEach(c => {
+        const gasto = totalPorCategoria[c];
+        const valorCategoria = (renda * parseFloat(document.getElementById(c).value)/100) || 0;
+        const restante = valorCategoria - gasto;
+        const usado = valorCategoria > 0 ? (gasto/valorCategoria*100).toFixed(1) : 0;
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td>${categoriaNomes[c]}</td>
+            <td>R$ ${valorCategoria.toFixed(2)}</td>
+            <td>R$ ${gasto.toFixed(2)}</td>
+            <td>R$ ${restante.toFixed(2)}</td>
+            <td>${usado}%</td>
+        `;
+        summaryBody.appendChild(row);
+    });
+
+    totalBudgetEl.innerText = `R$ ${renda.toFixed(2)}`;
+    totalSpentEl.innerText = `R$ ${totalGastos.toFixed(2)}`;
+    totalRemainingEl.innerText = `R$ ${(renda - totalGastos).toFixed(2)}`;
+    totalUsedEl.innerText = `${((totalGastos/renda)*100).toFixed(1)}%`;
+
+    // Atualiza gráfico
+    const ctx = document.getElementById("expenses-chart").getContext("2d");
+    const data = {
+        labels: categorias.map(c => categoriaNomes[c]),
+        datasets: [{
+            label: "Gastos por Categoria",
+            data: categorias.map(c => totalPorCategoria[c]),
+            backgroundColor: ["#e74c3c","#3498db","#2ecc71","#f39c12","#9b59b6","#1abc9c"]
+        }]
+    };
+
+    if (expensesChart) expensesChart.destroy();
+    expensesChart = new Chart(ctx, {
+        type: "pie",
+        data,
+        options: {
+            plugins: {
+                legend: { display: true, position: "bottom" }
+            }
+        }
+    });
+}
+
+// =======================
+// INICIALIZAÇÃO
+// =======================
+showLogin();
