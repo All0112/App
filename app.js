@@ -1,8 +1,8 @@
 // =======================
 // CONFIGURAÇÃO DO SUPABASE
 // =======================
-const SUPABASE_URL = "https://SEU-PROJETO.supabase.co"; // substitua
-const SUPABASE_KEY = "SUA-CHAVE-ANONIMA"; // substitua
+const SUPABASE_URL = "https://iballqwxsxkpltyustgj.supabase.co"; // substitua
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYWxscXd4c3hrcGx0eXVzdGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwNTc2MzAsImV4cCI6MjA3NDYzMzYzMH0.Z4WKcwVS5FFfbtaaiyBI0p348_v00pOYDYTq_6bDgGE"; // substitua
 const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentUser = null;
