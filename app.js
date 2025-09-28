@@ -3,7 +3,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // CONFIGURAÇÃO DO SUPABASE
     // =======================
     const SUPABASE_URL = "https://iballqwxsxkpltyustgj.supabase.co";
-    const SUPABASE_KEY = "SUA_CHAVE_AQUI"; // Substitua pela sua chave
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYWxscXd4c3hrcGx0eXVzdGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwNTc2MzAsImV4cCI6MjA3NDYzMzYzMH0.Z4WKcwVS5FFfbtaaiyBI0p348_v00pOYDYTq_6bDgGE"; // Substitua pela sua chave
     const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     let currentUser = null;
