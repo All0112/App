@@ -40,7 +40,7 @@ loginBtn.addEventListener("click", async () => {
 
     try {
         const { data: userData, error: userError } = await supabaseClient
-            .from("usuarios")
+            .from("Usuarios")
             .upsert({ username })
             .select()
             .single();
