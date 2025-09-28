@@ -1,333 +1,680 @@
-// =======================
-// CONFIGURAÇÃO DO SUPABASE E GLOBAIS
-// =======================
+// ==========================================================
+// CONFIGURAÇÃO DO SUPABASE (REAL) E VARIÁVEIS GLOBAIS
+// ==========================================================
+
+// IMPORTANTE: Substitua pelas suas credenciais reais do Supabase
 const SUPABASE_URL = "https://iballqwxsxkpltyustgj.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYWxscXd4c3hrcGx0eXVzdGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwNTc2MzAsImV4cCI6MjA3NDYzMzYzMH0.Z4WKcwVS5FFfbtaaiyBI0p348_v00pOYDYTq_6bDgGE";
+
+// A variável `supabase` vem do script carregado no HTML
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// SUGESTÃO: Centralizar as categorias para facilitar a manutenção
-const CATEGORIAS = {
-    "custos-fixos": "Custos Fixos",
-    "conforto": "Conforto",
-    "metas": "Metas",
-    "prazeres": "Prazeres",
-    "liberdade-financeira": "Liberdade Financeira",
-    "conhecimento": "Conhecimento"
+let currentUser = null; // Armazenará o objeto do usuário logado
+let isSyncing = false;
+
+// Variáveis Globais (com estado inicial limpo)
+let monthlyIncome = 0;
+// Pega o mês e ano atual no formato 'YYYY-MM'
+let currentMonth = new Date().toISOString().slice(0, 7);
+let chart = null;
+let percentages = {};
+let expenses = {};
+let savedConfigurations = {};
+let nextExpenseId = 1;
+
+// Configurações visuais e de categorias
+const categories = {
+    'custos-fixos': { name: 'Custos fixos', color: '#1FB8CD' },
+    'conforto': { name: 'Conforto', color: '#FFC185' },
+    'metas': { name: 'Metas', color: '#B4413C' },
+    'prazeres': { name: 'Prazeres', color: '#ECEBD5' },
+    'liberdade-financeira': { name: 'Liberdade Financeira', color: '#5D878F' },
+    'conhecimento': { name: 'Conhecimento', color: '#DB4545' }
+};
+const chartColors = Object.values(categories).map(c => c.color);
+const expenseTypeIcons = {
+    'unica': '🔹',
+    'fixa': '🔸',
+    'parcelada': '🔺'
 };
 
-let currentUser = null;
-let expensesChart = null;
 
-// =======================
-// ELEMENTOS DO DOM
-// =======================
-const loginScreen = document.getElementById("login-screen");
-const mainApp = document.getElementById("main-app");
-const loginBtn = document.getElementById("login-btn");
-const usernameInput = document.getElementById("username");
-const currentUsername = document.getElementById("current-username");
-const logoutBtn = document.getElementById("logout-btn");
-const tabButtons = document.querySelectorAll(".tab-button");
-const tabContents = document.querySelectorAll(".tab-content");
+// ==========================================================
+// FUNÇÕES DE AUTENTICAÇÃO E DADOS (SUPABASE REAL)
+// ==========================================================
 
-const categorySliders = document.querySelectorAll(".category-slider");
-const monthlyIncomeInput = document.getElementById("monthly-income");
-
-const dashboardIncome = document.getElementById("dashboard-income");
-const summaryBody = document.getElementById("summary-body");
-const totalBudgetEl = document.getElementById("total-budget");
-const totalSpentEl = document.getElementById("total-spent");
-const totalRemainingEl = document.getElementById("total-remaining");
-const totalUsedEl = document.getElementById("total-used");
-const expensesGrid = document.getElementById("expenses-categories-grid");
-
-// =======================
-// LOGIN / LOGOUT
-// =======================
-loginBtn.addEventListener("click", async () => {
-    const username = usernameInput.value.trim();
-    if (!username) return alert("Digite um nome de usuário!");
-
+async function loginUser(username) {
     try {
-        // CORREÇÃO: A tabela deve ser "Usuarios" com "U" maiúsculo
-        const { data: userData, error: userError } = await supabaseClient
-            .from("Usuarios")
-            .upsert({ username }, { onConflict: 'username' }) // Garante que o username seja único
-            .select()
+        setSyncStatus('syncing', '🔄 Conectando...');
+
+        // Procura se o usuário já existe
+        let { data: userData, error: selectError } = await supabaseClient
+            .from('Usuarios')
+            .select('*')
+            .eq('username', username)
             .single();
 
-        if (userError) throw userError;
-
-        currentUser = userData;
-        showMainApp(username);
-        await carregarConfiguracoes();
-        await carregarGastos();
-    } catch (err) {
-        console.error(err);
-        alert("Erro ao logar!");
-    }
-});
-
-logoutBtn.addEventListener("click", () => {
-    currentUser = null;
-    showLogin();
-    usernameInput.value = "";
-    expensesGrid.innerHTML = "";
-    if (expensesChart) {
-        expensesChart.destroy();
-        expensesChart = null;
-    }
-});
-
-// =======================
-// MOSTRAR TELAS
-// =======================
-function showMainApp(username) {
-    loginScreen.classList.add("hidden");
-    mainApp.classList.remove("hidden");
-    currentUsername.innerText = username;
-}
-
-function showLogin() {
-    loginScreen.classList.remove("hidden");
-    mainApp.classList.add("hidden");
-}
-
-// =======================
-// TROCA DE ABAS
-// =======================
-tabButtons.forEach(btn => {
-    btn.addEventListener("click", () => {
-        const target = btn.dataset.tab;
-        tabButtons.forEach(b => b.classList.remove("active"));
-        tabContents.forEach(c => c.classList.remove("active"));
-
-        btn.classList.add("active");
-        document.getElementById(`tab-${target}`).classList.add("active");
-    });
-});
-
-// =======================
-// SLIDERS DE CATEGORIAS
-// =======================
-categorySliders.forEach(slider => {
-    slider.addEventListener("input", atualizarValores);
-});
-monthlyIncomeInput.addEventListener("input", atualizarValores);
-
-function atualizarValores() {
-    const monthlyIncome = parseFloat(monthlyIncomeInput.value) || 0;
-    categorySliders.forEach(slider => {
-        const percentSpan = document.getElementById(`percent-${slider.id}`);
-        const valueSpan = document.getElementById(`value-${slider.id}`);
-        if (percentSpan) percentSpan.innerText = `${parseFloat(slider.value).toFixed(1)}%`;
-        if (valueSpan) valueSpan.innerText = `R$ ${(monthlyIncome * slider.value / 100).toFixed(2)}`;
-    });
-
-    let total = 0;
-    categorySliders.forEach(slider => total += parseFloat(slider.value));
-    const totalPercent = document.getElementById("total-percentage");
-    if (totalPercent) totalPercent.innerText = `${total.toFixed(1)}%`;
-
-    dashboardIncome.innerText = `R$ ${monthlyIncome.toFixed(2)}`;
-}
-
-// =======================
-// CONFIGURAÇÕES
-// =======================
-document.getElementById("save-config")?.addEventListener("click", salvarConfiguracao);
-document.getElementById("load-config")?.addEventListener("click", carregarConfiguracoesPorNome);
-
-async function salvarConfiguracao() {
-    if (!currentUser) return alert("Usuário não logado!");
-
-    const nome = document.getElementById("config-name")?.value.trim();
-    if (!nome) return alert("Digite um nome para a configuração!");
-
-    const config = {
-        usuario_id: currentUser.id,
-        nome,
-        renda_mensal: parseFloat(monthlyIncomeInput.value) || 0,
-    };
-
-    categorySliders.forEach(slider => {
-        config[slider.id] = parseFloat(slider.value);
-    });
-
-    try {
-        // SUGESTÃO: Especificar as colunas de conflito para o upsert funcionar corretamente.
-        // Garanta que `usuario_id` e `nome` formem uma chave única na sua tabela do Supabase.
-        const { error } = await supabaseClient
-            .from("configuracoes")
-            .upsert(config, { onConflict: 'usuario_id, nome' });
-
-        if (error) throw error;
-        alert("Configuração salva!");
-    } catch (err) {
-        console.error(err);
-        alert("Erro ao salvar configuração!");
-    }
-}
-
-async function carregarConfiguracoesPorNome() {
-    if (!currentUser) return;
-    const nome = document.getElementById("load-name")?.value.trim();
-    if (!nome) return alert("Digite o nome da configuração para carregar!");
-
-    try {
-        const { data, error } = await supabaseClient
-            .from("configuracoes")
-            .select("*")
-            .eq("usuario_id", currentUser.id)
-            .eq("nome", nome)
-            .single();
-
-        if (error) throw error;
-        aplicarConfiguracao(data);
-    } catch (err) {
-        console.error(err);
-        alert("Erro ao carregar configuração!");
-    }
-}
-
-async function carregarConfiguracoes() {
-    if (!currentUser) return;
-    try {
-        const { data, error } = await supabaseClient
-            .from("configuracoes")
-            .select("*")
-            .eq("usuario_id", currentUser.id)
-            .order("id", { ascending: false }) // Pega a mais recente
-            .limit(1)
-            .single(); // Use single para obter um objeto, não um array
-
-        if (error && error.code !== 'PGRST116') { // Ignora erro "nenhuma linha encontrada"
-            throw error;
+        // Se o erro não for "usuário não encontrado", algo deu errado
+        if (selectError && selectError.code !== 'PGRST116') {
+            throw selectError;
         }
-        if (data) aplicarConfiguracao(data);
-    } catch (err) {
-        console.error(err);
-    }
-}
 
-function aplicarConfiguracao(config) {
-    monthlyIncomeInput.value = config.renda_mensal || 0;
-    categorySliders.forEach(slider => {
-        slider.value = config[slider.id] || 0;
-    });
-    atualizarValores();
-}
+        if (userData) {
+            console.log('👤 Usuário existente encontrado');
+            showLoginMessage('Login realizado com sucesso!', 'success');
+        } else {
+            console.log('👤 Criando novo usuário...');
+            // Cria um novo usuário com dados padrão (vazios)
+            const defaultData = {
+                monthlyIncome: 0,
+                percentages: {},
+                gastosPorMes: {},
+                savedConfigurations: {},
+                currentMonth: new Date().toISOString().slice(0, 7),
+            };
 
-// =======================
-// GASTOS
-// =======================
-document.getElementById("add-expense")?.addEventListener("click", async () => {
-    if (!currentUser) return;
+            const { data: newUser, error: insertError } = await supabaseClient
+                .from('Usuarios')
+                .insert([{
+                    username: username,
+                    dados_orcamento: defaultData
+                }])
+                .select()
+                .single();
 
-    const categoria = document.getElementById("expense-category")?.value;
-    const descricao = document.getElementById("expense-description")?.value.trim();
-    const valor = parseFloat(document.getElementById("expense-amount")?.value) || 0;
-    const mes_ano = document.getElementById("month-year")?.value;
-
-    if (!descricao || valor <= 0) return alert("Preencha todos os campos corretamente!");
-
-    const gasto = { usuario_id: currentUser.id, categoria, descricao, valor, mes_ano };
-
-    try {
-        const { error } = await supabaseClient.from("gastos").insert([gasto]);
-        if (error) throw error;
-        
-        // SUGESTÃO: Recarregar os gastos do banco para garantir consistência
-        await carregarGastos();
-
-        // Limpar os campos após o sucesso
-        document.getElementById("expense-description").value = "";
-        document.getElementById("expense-amount").value = "";
-    } catch (err) {
-        console.error(err);
-        alert("Erro ao salvar gasto!");
-    }
-});
-
-async function carregarGastos() {
-    if (!currentUser) return;
-    const mes_ano = document.getElementById("month-year")?.value;
-
-    try {
-        const { data, error } = await supabaseClient
-            .from("gastos")
-            .select("*")
-            .eq("usuario_id", currentUser.id)
-            .eq("mes_ano", mes_ano);
-
-        if (error) throw error;
-        expensesGrid.innerHTML = "";
-        data.forEach(adicionarGastoNaTela);
-        atualizarDashboard(data); // Passa os dados carregados para o dashboard
-    } catch (err) {
-        console.error(err);
-    }
-}
-
-function adicionarGastoNaTela(gasto) {
-    const card = document.createElement("div");
-    card.classList.add("expense-card", "card");
-    card.innerHTML = `<div class="card__body"><strong>${CATEGORIAS[gasto.categoria] || gasto.categoria}</strong><br>${gasto.descricao} - R$ ${gasto.valor.toFixed(2)}</div>`;
-    expensesGrid.appendChild(card);
-}
-
-document.getElementById("month-year")?.addEventListener("change", carregarGastos);
-
-// =======================
-// DASHBOARD - GRÁFICO E RESUMO
-// =======================
-function atualizarDashboard(gastos = []) {
-    const categorias = Object.keys(CATEGORIAS); // Usa a constante global
-    const categoriaNomes = CATEGORIAS;
-
-    const totalPorCategoria = {};
-    categorias.forEach(c => totalPorCategoria[c] = 0);
-    gastos.forEach(g => {
-        if (totalPorCategoria[g.categoria] !== undefined) {
-            totalPorCategoria[g.categoria] += g.valor;
+            if (insertError) throw insertError;
+            userData = newUser;
+            showLoginMessage('Conta criada e login realizado com sucesso!', 'success');
         }
-    });
 
-    const totalGastos = Object.values(totalPorCategoria).reduce((a, b) => a + b, 0);
-    const renda = parseFloat(monthlyIncomeInput.value) || 0;
+        currentUser = userData; // Armazena o objeto completo do usuário
+        await loadUserDataFromCloud(userData);
+        showMainApp();
+        setSyncStatus('synced', '✅ Sincronizado');
+        return true;
 
-    summaryBody.innerHTML = "";
-    categorias.forEach(c => {
-        const gasto = totalPorCategoria[c];
-        const valorCategoria = (renda * parseFloat(document.getElementById(c)?.value || 0) / 100) || 0;
-        const restante = valorCategoria - gasto;
-        const usado = valorCategoria > 0 ? (gasto / valorCategoria * 100).toFixed(1) : 0;
-        const row = document.createElement("tr");
-        row.innerHTML = `<td>${categoriaNomes[c]}</td><td>R$ ${valorCategoria.toFixed(2)}</td><td>R$ ${gasto.toFixed(2)}</td><td>R$ ${restante.toFixed(2)}</td><td>${usado}%</td>`;
-        summaryBody.appendChild(row);
-    });
+    } catch (error) {
+        console.error('❌ Erro no login:', error);
+        setSyncStatus('error', '❌ Erro de conexão');
+        showLoginMessage('Erro ao fazer login: ' + error.message, 'error');
+        return false;
+    }
+}
 
-    totalBudgetEl.innerText = `R$ ${renda.toFixed(2)}`;
-    totalSpentEl.innerText = `R$ ${totalGastos.toFixed(2)}`;
-    totalRemainingEl.innerText = `R$ ${(renda - totalGastos).toFixed(2)}`;
-    totalUsedEl.innerText = renda > 0 ? `${((totalGastos / renda) * 100).toFixed(1)}%` : '0.0%';
+async function loadUserDataFromCloud(userData) {
+    try {
+        console.log('📥 Carregando dados do usuário da nuvem...');
+        const dadosOrcamento = userData.dados_orcamento || {};
 
-    const ctx = document.getElementById("expenses-chart")?.getContext("2d");
-    if (ctx) {
-        const data = {
-            labels: categorias.map(c => categoriaNomes[c]),
-            datasets: [{
-                label: "Gastos por Categoria",
-                data: categorias.map(c => totalPorCategoria[c]),
-                backgroundColor: ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1abc9c"]
-            }]
+        // Carrega os dados com valores padrão caso não existam
+        monthlyIncome = dadosOrcamento.monthlyIncome || 0;
+        percentages = dadosOrcamento.percentages || {};
+        expenses = dadosOrcamento.gastosPorMes || {};
+        savedConfigurations = dadosOrcamento.savedConfigurations || {};
+        currentMonth = dadosOrcamento.currentMonth || new Date().toISOString().slice(0, 7);
+
+        // Calcula o próximo ID de despesa para evitar conflitos
+        let maxId = 0;
+        Object.values(expenses).forEach(monthExpenses => {
+            monthExpenses.forEach(expense => {
+                if (expense.id > maxId) maxId = expense.id;
+            });
+        });
+        nextExpenseId = maxId + 1;
+        console.log('✅ Dados carregados da nuvem.');
+    } catch (error) {
+        console.error('❌ Erro ao carregar dados:', error);
+        console.log('🔄 Usando dados padrão devido ao erro');
+    }
+}
+
+async function saveUserDataToCloud() {
+    if (!supabaseClient || !currentUser || isSyncing) return false;
+
+    try {
+        isSyncing = true;
+        setSyncStatus('syncing', '🔄 Salvando...');
+
+        const dadosOrcamento = {
+            monthlyIncome,
+            percentages,
+            gastosPorMes: expenses,
+            savedConfigurations,
+            currentMonth,
         };
-        if (expensesChart) expensesChart.destroy();
-        expensesChart = new Chart(ctx, { type: "pie", data, options: { plugins: { legend: { display: true, position: "bottom" } } } });
+
+        const { error } = await supabaseClient
+            .from('Usuarios')
+            .update({ dados_orcamento: dadosOrcamento })
+            .eq('id', currentUser.id); // Salva usando o ID do usuário, que é mais seguro
+
+        if (error) throw error;
+
+        console.log('💾 Dados salvos na nuvem com sucesso');
+        setSyncStatus('synced', '✅ Salvo');
+
+        setTimeout(() => {
+            if (!isSyncing) setSyncStatus('synced', '');
+        }, 2000);
+        return true;
+
+    } catch (error) {
+        console.error('❌ Erro ao salvar dados:', error);
+        setSyncStatus('error', '❌ Erro ao salvar');
+        return false;
+    } finally {
+        isSyncing = false;
     }
 }
 
-// =======================
-// INICIALIZAÇÃO
-// =======================
-showLogin();
+// ==========================================================
+// O RESTANTE DO CÓDIGO (Lógica da UI) - (permanece quase o mesmo)
+// ==========================================================
+
+// AUTO-SAVE FUNCTIONALITY
+function scheduleAutoSave() {
+    clearTimeout(window.autoSaveTimeout);
+    window.autoSaveTimeout = setTimeout(async () => {
+        if (currentUser) await saveUserDataToCloud();
+    }, 1500);
+}
+
+// LOGIN/LOGOUT UI FUNCTIONS
+function showLoginScreen() {
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('main-app').classList.add('hidden');
+}
+
+function showMainApp() {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('main-app').classList.remove('hidden');
+
+    const usernameEl = document.getElementById('current-username');
+    if (usernameEl && currentUser) {
+        usernameEl.textContent = currentUser.username;
+    }
+    updateAllDisplays();
+}
+
+function showLoginMessage(message, type = 'info') {
+    const messageEl = document.getElementById('login-message');
+    if (messageEl) {
+        messageEl.textContent = message;
+        messageEl.className = `login-message ${type}`;
+        messageEl.classList.remove('hidden');
+    }
+}
+
+function hideLoginMessage() {
+    const messageEl = document.getElementById('login-message');
+    if (messageEl) messageEl.classList.add('hidden');
+}
+
+function setSyncStatus(status, text) {
+    const syncEl = document.getElementById('sync-indicator');
+    if (syncEl) {
+        syncEl.textContent = text;
+        syncEl.className = `sync-indicator ${status}`;
+    }
+}
+
+function logout() {
+    currentUser = null;
+    showLoginScreen();
+    hideLoginMessage();
+    setSyncStatus('', '');
+    console.log('👋 Usuário desconectado');
+}
+
+// LOGIN EVENT HANDLERS
+function setupLoginHandlers() {
+    const loginBtn = document.getElementById('login-btn');
+    const usernameInput = document.getElementById('username');
+    const logoutBtn = document.getElementById('logout-btn');
+
+    if (loginBtn && usernameInput) {
+        loginBtn.addEventListener('click', async () => {
+            const username = usernameInput.value.trim();
+            if (!username) {
+                showLoginMessage('Por favor, digite um nome de usuário', 'error');
+                return;
+            }
+            const btnText = document.getElementById('login-btn-text');
+            const spinner = document.getElementById('login-spinner');
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+            loginBtn.disabled = true;
+
+            const success = await loginUser(username);
+
+            if (btnText) btnText.classList.remove('hidden');
+            if (spinner) spinner.classList.add('hidden');
+            loginBtn.disabled = false;
+            if (success) usernameInput.value = '';
+        });
+        usernameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') loginBtn.click();
+        });
+        usernameInput.addEventListener('input', hideLoginMessage);
+    }
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', () => {
+            if (confirm('Tem certeza que deseja sair?')) {
+                logout();
+            }
+        });
+    }
+}
+
+// Utility functions
+function formatCurrency(amount) {
+    return (amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+function formatPercentage(percentage) {
+    return `${(percentage || 0).toFixed(1).replace('.', ',')}%`;
+}
+
+// SISTEMA DE ABAS FUNCIONAL
+function initializeTabs() {
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabContents = document.querySelectorAll('.tab-content');
+    tabButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const targetTab = this.getAttribute('data-tab');
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            tabContents.forEach(content => content.classList.remove('active'));
+            this.classList.add('active');
+            const targetContent = document.getElementById(`tab-${targetTab}`);
+            if (targetContent) targetContent.classList.add('active');
+            updateTabContent(targetTab);
+        });
+    });
+}
+
+function updateTabContent(targetTab) {
+    switch(targetTab) {
+        case 'dashboard':
+            setTimeout(updateDashboard, 100);
+            break;
+        case 'configurar':
+            updatePercentageDisplays();
+            updateAmounts();
+            updateTotalPercentage();
+            break;
+        case 'gastos':
+            updateExpensesCategoriesGrid();
+            break;
+    }
+}
+
+// Dashboard Functions
+function updateDashboard() {
+    updateIncomeDisplay();
+    updateChart();
+    updateSummaryTable();
+    updateGoalsList();
+    updateCategoryDetails();
+}
+
+function updateIncomeDisplay() {
+    const incomeElement = document.getElementById('dashboard-income');
+    if (incomeElement) incomeElement.textContent = formatCurrency(monthlyIncome);
+}
+
+function getExpensesForMonth(month = currentMonth) {
+    return expenses[month] || [];
+}
+
+function getTotalSpentByCategory(month = currentMonth) {
+    const monthExpenses = getExpensesForMonth(month);
+    const totals = {};
+    Object.keys(categories).forEach(cat => { totals[cat] = 0; });
+    monthExpenses.forEach(expense => {
+        if (totals[expense.category] !== undefined) {
+            totals[expense.category] += expense.amount;
+        }
+    });
+    return totals;
+}
+
+function updateChart() {
+    const ctx = document.getElementById('expenses-chart');
+    if (!ctx) return;
+    const spentByCategory = getTotalSpentByCategory();
+    const data = Object.keys(categories).map(cat => spentByCategory[cat] || 0);
+    const labels = Object.keys(categories).map(cat => categories[cat].name);
+
+    if (chart) chart.destroy();
+
+    chart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{ data: data, backgroundColor: chartColors, borderWidth: 2, borderColor: '#fff' }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }
+        }
+    });
+    updateChartLegend(labels, chartColors, data);
+}
+
+function updateChartLegend(labels, colors, data) {
+    const legendContainer = document.getElementById('chart-legend');
+    if (!legendContainer) return;
+    legendContainer.innerHTML = labels.map((label, index) => `
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: ${colors[index]}"></div>
+            <span>${label}: ${formatCurrency(data[index])}</span>
+        </div>
+    `).join('');
+}
+
+function updateSummaryTable() {
+    const tbody = document.getElementById('summary-body');
+    if (!tbody) return;
+    const spentByCategory = getTotalSpentByCategory();
+    let totalBudget = 0;
+    let totalSpent = 0;
+
+    tbody.innerHTML = Object.keys(categories).map(catId => {
+        const budget = (monthlyIncome * (percentages[catId] || 0)) / 100;
+        const spent = spentByCategory[catId] || 0;
+        const remaining = budget - spent;
+        const usedPercent = budget > 0 ? (spent / budget) * 100 : 0;
+        totalBudget += budget;
+        totalSpent += spent;
+        let usageClass = usedPercent > 100 ? 'usage-over' : (usedPercent > 80 ? 'usage-warning' : 'usage-good');
+        return `
+            <tr>
+                <td>${categories[catId].name}</td>
+                <td>${formatCurrency(budget)}</td>
+                <td>${formatCurrency(spent)}</td>
+                <td>${formatCurrency(remaining)}</td>
+                <td><span class="usage-indicator ${usageClass}">${formatPercentage(usedPercent)}</span></td>
+            </tr>
+        `;
+    }).join('');
+
+    const totalRemaining = totalBudget - totalSpent;
+    const totalUsedPercent = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
+    document.getElementById('total-budget').textContent = formatCurrency(totalBudget);
+    document.getElementById('total-spent').textContent = formatCurrency(totalSpent);
+    document.getElementById('total-remaining').textContent = formatCurrency(totalRemaining);
+    document.getElementById('total-used').textContent = formatPercentage(totalUsedPercent);
+}
+
+function updateGoalsList() {
+    const goalsList = document.getElementById('goals-list');
+    if (!goalsList) return;
+    goalsList.innerHTML = Object.keys(categories).map(catId => `
+        <div class="goal-item">
+            <span class="goal-category">${categories[catId].name}</span>
+            <span class="goal-percentage">${formatPercentage(percentages[catId] || 0)}</span>
+        </div>
+    `).join('');
+}
+
+function updateCategoryDetails() {
+    const grid = document.getElementById('category-details-grid');
+    if (!grid) return;
+    const monthExpenses = getExpensesForMonth();
+    grid.innerHTML = Object.keys(categories).map(catId => {
+        const categoryExpenses = monthExpenses.filter(expense => expense.category === catId);
+        const expensesList = categoryExpenses.length > 0 ?
+            categoryExpenses.map(expense => `
+                <div class="expense-item">
+                    <div class="expense-description">
+                        <span class="expense-type-icon">${expenseTypeIcons[expense.type] || '🔹'}</span>
+                        <span>${expense.description}</span>
+                    </div>
+                    <span class="expense-amount">${formatCurrency(expense.amount)}</span>
+                </div>
+            `).join('') : '<div class="no-expenses">Nenhum gasto registrado</div>';
+        return `
+            <div class="card category-detail-card">
+                <div class="card__body">
+                    <div class="category-detail-header">
+                        <div class="category-detail-color" style="background-color: ${categories[catId].color}"></div>
+                        <h4 class="category-detail-title">${categories[catId].name}</h4>
+                    </div>
+                    <div class="expense-list">${expensesList}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Expenses Management
+function addExpense() {
+    const category = document.getElementById('expense-category').value;
+    const description = document.getElementById('expense-description').value.trim();
+    const type = document.getElementById('expense-type').value;
+    const amount = parseFloat(document.getElementById('expense-amount').value);
+
+    if (!description || !amount || amount <= 0) {
+        alert('Por favor, preencha todos os campos corretamente.');
+        return;
+    }
+    if (!expenses[currentMonth]) expenses[currentMonth] = [];
+    expenses[currentMonth].push({ id: nextExpenseId++, category, description, type, amount });
+
+    document.getElementById('expense-description').value = '';
+    document.getElementById('expense-amount').value = '';
+    
+    updateExpensesCategoriesGrid();
+    updateDashboard();
+    scheduleAutoSave();
+    alert('Gasto adicionado com sucesso!');
+}
+
+function removeExpense(expenseId) {
+    if (!expenses[currentMonth]) return;
+    const expense = expenses[currentMonth].find(e => e.id === expenseId);
+    if (!expense) return;
+    if (confirm(`Deseja remover o gasto "${expense.description}"?`)) {
+        expenses[currentMonth] = expenses[currentMonth].filter(e => e.id !== expenseId);
+        updateExpensesCategoriesGrid();
+        updateDashboard();
+        scheduleAutoSave();
+        alert('Gasto removido com sucesso!');
+    }
+}
+
+function updateExpensesCategoriesGrid() {
+    const grid = document.getElementById('expenses-categories-grid');
+    if (!grid) return;
+    const monthExpenses = getExpensesForMonth();
+    grid.innerHTML = Object.keys(categories).map(catId => {
+        const categoryExpenses = monthExpenses.filter(e => e.category === catId);
+        const expensesList = categoryExpenses.length > 0 ?
+            categoryExpenses.map(expense => `
+                <div class="category-expense-item">
+                    <div class="category-expense-info">
+                        <div class="category-expense-description">${expense.description}</div>
+                        <div class="category-expense-type">${expenseTypeIcons[expense.type]} ${expense.type}</div>
+                    </div>
+                    <div>
+                        <div class="category-expense-amount">${formatCurrency(expense.amount)}</div>
+                        <button class="delete-expense" onclick="removeExpense(${expense.id})">Remover</button>
+                    </div>
+                </div>
+            `).join('') : '<div class="no-expenses">Nenhum gasto registrado</div>';
+        return `
+            <div class="category-expenses-column">
+                <div class="category-expenses-header">
+                    <div class="category-expenses-color" style="background-color: ${categories[catId].color}"></div>
+                    <div class="category-expenses-name">${categories[catId].name}</div>
+                </div>
+                <div class="category-expenses-list">${expensesList}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Configuration Management
+function showFeedbackMessage(message, type = 'success') {
+    const el = document.getElementById('feedback-message');
+    if (el) {
+        el.textContent = message;
+        el.className = `feedback-message ${type}`;
+        el.classList.remove('hidden');
+        setTimeout(() => el.classList.add('hidden'), 5000);
+    }
+}
+function hideFeedbackMessage() {
+    const el = document.getElementById('feedback-message');
+    if (el) el.classList.add('hidden');
+}
+
+function saveConfiguration(name) {
+    if (!name || name.trim() === '') {
+        showFeedbackMessage('Digite um nome para a configuração', 'warning');
+        return;
+    }
+    const configName = name.trim();
+    savedConfigurations[configName] = { monthlyIncome, percentages: { ...percentages } };
+    updateSavedConfigsList();
+    showFeedbackMessage(`Configuração '${configName}' salva!`, 'success');
+    document.getElementById('config-name').value = '';
+    scheduleAutoSave();
+}
+
+function loadConfiguration(name) {
+    const config = savedConfigurations[name];
+    if (!config) {
+        showFeedbackMessage(`Configuração '${name}' não encontrada`, 'error');
+        return;
+    }
+    monthlyIncome = config.monthlyIncome || 0;
+    percentages = { ...config.percentages };
+    document.getElementById('monthly-income').value = monthlyIncome;
+    Object.keys(percentages).forEach(c => {
+        const slider = document.getElementById(c);
+        if (slider) slider.value = percentages[c];
+    });
+    updateAllDisplays();
+    showFeedbackMessage(`Configuração '${name}' carregada!`, 'success');
+    scheduleAutoSave();
+}
+
+function updateSavedConfigsList() {
+    const list = document.getElementById('saved-configs-list');
+    if (!list) return;
+    const names = Object.keys(savedConfigurations);
+    list.innerHTML = names.length === 0 ? '<span class="empty-configs">Nenhuma configuração salva</span>'
+        : names.map(n => `<span class="config-tag" onclick="quickLoadConfig('${n}')">${n}</span>`).join('');
+}
+
+function quickLoadConfig(name) {
+    loadConfiguration(name);
+}
+
+function updateAmounts() {
+    Object.keys(categories).forEach(c => {
+        const amount = (monthlyIncome * (percentages[c] || 0)) / 100;
+        const el = document.getElementById(`value-${c}`);
+        if (el) el.textContent = formatCurrency(amount);
+    });
+}
+function updatePercentageDisplays() {
+    Object.keys(categories).forEach(c => {
+        const el = document.getElementById(`percent-${c}`);
+        if (el) el.textContent = formatPercentage(percentages[c] || 0);
+    });
+}
+function updateTotalPercentage() {
+    const total = Object.values(percentages).reduce((s, v) => s + (v || 0), 0);
+    const el = document.getElementById('total-percentage');
+    if (el) {
+        el.textContent = formatPercentage(total);
+        el.classList.toggle('over-100', total > 100.1);
+        el.classList.toggle('under-100', total < 99.9);
+    }
+}
+
+function handleIncomeInput() {
+    const input = document.getElementById('monthly-income');
+    if (input) {
+        monthlyIncome = parseFloat(input.value) || 0;
+        updateAmounts();
+        updateDashboard();
+        scheduleAutoSave();
+    }
+}
+
+function handleSliderChange(category, value) {
+    percentages[category] = parseFloat(value);
+    updatePercentageDisplays();
+    updateAmounts();
+    updateTotalPercentage();
+    updateDashboard();
+    scheduleAutoSave();
+}
+
+function setupConfigurationHandlers() {
+    document.getElementById('save-config')?.addEventListener('click', () => saveConfiguration(document.getElementById('config-name').value));
+    document.getElementById('load-config')?.addEventListener('click', () => loadConfiguration(document.getElementById('load-name').value));
+    ['config-name', 'load-name'].forEach(id => {
+        document.getElementById(id)?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') e.target.nextElementSibling.click();
+        });
+        document.getElementById(id)?.addEventListener('input', hideFeedbackMessage);
+    });
+}
+
+function setupEventHandlers() {
+    const monthSelect = document.getElementById('month-year');
+    if (monthSelect) {
+        monthSelect.value = currentMonth;
+        monthSelect.addEventListener('change', (e) => {
+            currentMonth = e.target.value;
+            updateDashboard();
+            updateExpensesCategoriesGrid();
+            scheduleAutoSave();
+        });
+    }
+    const incomeInput = document.getElementById('monthly-income');
+    if (incomeInput) {
+        incomeInput.value = monthlyIncome;
+        incomeInput.addEventListener('input', handleIncomeInput);
+    }
+    Object.keys(categories).forEach(c => {
+        const slider = document.getElementById(c);
+        if (slider) slider.addEventListener('input', (e) => handleSliderChange(c, e.target.value));
+    });
+    document.getElementById('add-expense')?.addEventListener('click', addExpense);
+    setupConfigurationHandlers();
+}
+
+function updateAllDisplays() {
+    updatePercentageDisplays();
+    updateAmounts();
+    updateTotalPercentage();
+    updateExpensesCategoriesGrid();
+    updateDashboard();
+    updateSavedConfigsList();
+}
+
+// Make functions available globally for inline onclick handlers
+window.quickLoadConfig = quickLoadConfig;
+window.removeExpense = removeExpense;
+
+// ==========================================================
+// INICIALIZAÇÃO PRINCIPAL DO APLICATIVO
+// ==========================================================
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 DOM loaded, initializing app...');
+    // O cliente Supabase já foi inicializado no topo
+    if (supabaseClient) {
+        setupLoginHandlers();
+        initializeTabs();
+        setupEventHandlers();
+        showLoginScreen();
+        console.log('🎉 App initialized successfully - waiting for login');
+    } else {
+        showLoginMessage('Erro fatal: Cliente Supabase não pôde ser inicializado.', 'error');
+    }
+});
