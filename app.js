@@ -6,675 +6,308 @@
 const SUPABASE_URL = "https://iballqwxsxkpltyustgj.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYWxscXd4c3hrcGx0eXVzdGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwNTc2MzAsImV4cCI6MjA3NDYzMzYzMH0.Z4WKcwVS5FFfbtaaiyBI0p348_v00pOYDYTq_6bDgGE";
 
-// A variável `supabase` vem do script carregado no HTML
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let currentUser = null; // Armazenará o objeto do usuário logado
-let isSyncing = false;
-
-// Variáveis Globais (com estado inicial limpo)
-let monthlyIncome = 0;
-// Pega o mês e ano atual no formato 'YYYY-MM'
-let currentMonth = new Date().toISOString().slice(0, 7);
+let currentUser = null;
 let chart = null;
-let percentages = {};
-let expenses = {};
-let savedConfigurations = {};
-let nextExpenseId = 1;
 
-// Configurações visuais e de categorias
-const categories = {
-    'custos-fixos': { name: 'Custos fixos', color: '#1FB8CD' },
-    'conforto': { name: 'Conforto', color: '#FFC185' },
-    'metas': { name: 'Metas', color: '#B4413C' },
-    'prazeres': { name: 'Prazeres', color: '#ECEBD5' },
-    'liberdade-financeira': { name: 'Liberdade Financeira', color: '#5D878F' },
-    'conhecimento': { name: 'Conhecimento', color: '#DB4545' }
-};
-const chartColors = Object.values(categories).map(c => c.color);
-const expenseTypeIcons = {
-    'unica': '🔹',
-    'fixa': '🔸',
-    'parcelada': '🔺'
+// Estrutura de dados padrão para novos usuários e estado local
+let budgetData = {
+    monthlyIncome: 0,
+    percentages: {},
+    expenses: {}
 };
 
+// Categorias padrão do aplicativo
+const CATEGORIES = {
+    'custos-fixos': 'Custos Fixos',
+    'conforto': 'Conforto',
+    'metas': 'Metas',
+    'prazeres': 'Prazeres',
+    'liberdade-financeira': 'Liberdade Financeira',
+    'conhecimento': 'Conhecimento'
+};
 
 // ==========================================================
-// FUNÇÕES DE AUTENTICAÇÃO E DADOS (SUPABASE REAL)
+// FUNÇÕES DE AUTENTICAÇÃO E DADOS (SUPABASE)
 // ==========================================================
 
 async function loginUser(username) {
+    showSpinner(true);
     try {
-        setSyncStatus('syncing', '🔄 Conectando...');
-
-        // Procura se o usuário já existe
-        let { data: userData, error: selectError } = await supabaseClient
+        let { data: user, error } = await supabaseClient
             .from('Usuarios')
             .select('*')
             .eq('username', username)
             .single();
 
-        // Se o erro não for "usuário não encontrado", algo deu errado
-        if (selectError && selectError.code !== 'PGRST116') {
-            throw selectError;
-        }
+        if (error && error.code !== 'PGRST116') throw error; // Ignora apenas erro 'not found'
 
-        if (userData) {
-            console.log('👤 Usuário existente encontrado');
-            showLoginMessage('Login realizado com sucesso!', 'success');
-        } else {
-            console.log('👤 Criando novo usuário...');
-            // Cria um novo usuário com dados padrão (vazios)
-            const defaultData = {
-                monthlyIncome: 0,
-                percentages: {},
-                gastosPorMes: {},
-                savedConfigurations: {},
-                currentMonth: new Date().toISOString().slice(0, 7),
-            };
-
+        if (!user) {
+            console.log(`Criando novo usuário: ${username}`);
             const { data: newUser, error: insertError } = await supabaseClient
                 .from('Usuarios')
-                .insert([{
-                    username: username,
-                    dados_orcamento: defaultData
-                }])
+                .insert({ username: username, dados_orcamento: budgetData })
                 .select()
                 .single();
-
             if (insertError) throw insertError;
-            userData = newUser;
-            showLoginMessage('Conta criada e login realizado com sucesso!', 'success');
+            user = newUser;
+            showLoginMessage('Conta criada com sucesso!', 'success');
+        } else {
+            showLoginMessage('Login realizado com sucesso!', 'success');
         }
 
-        currentUser = userData; // Armazena o objeto completo do usuário
-        await loadUserDataFromCloud(userData);
+        currentUser = user;
+        budgetData = user.dados_orcamento || budgetData;
         showMainApp();
-        setSyncStatus('synced', '✅ Sincronizado');
-        return true;
 
-    } catch (error) {
-        console.error('❌ Erro no login:', error);
-        setSyncStatus('error', '❌ Erro de conexão');
-        showLoginMessage('Erro ao fazer login: ' + error.message, 'error');
-        return false;
-    }
-}
-
-async function loadUserDataFromCloud(userData) {
-    try {
-        console.log('📥 Carregando dados do usuário da nuvem...');
-        const dadosOrcamento = userData.dados_orcamento || {};
-
-        // Carrega os dados com valores padrão caso não existam
-        monthlyIncome = dadosOrcamento.monthlyIncome || 0;
-        percentages = dadosOrcamento.percentages || {};
-        expenses = dadosOrcamento.gastosPorMes || {};
-        savedConfigurations = dadosOrcamento.savedConfigurations || {};
-        currentMonth = dadosOrcamento.currentMonth || new Date().toISOString().slice(0, 7);
-
-        // Calcula o próximo ID de despesa para evitar conflitos
-        let maxId = 0;
-        Object.values(expenses).forEach(monthExpenses => {
-            monthExpenses.forEach(expense => {
-                if (expense.id > maxId) maxId = expense.id;
-            });
-        });
-        nextExpenseId = maxId + 1;
-        console.log('✅ Dados carregados da nuvem.');
-    } catch (error) {
-        console.error('❌ Erro ao carregar dados:', error);
-        console.log('🔄 Usando dados padrão devido ao erro');
-    }
-}
-
-async function saveUserDataToCloud() {
-    if (!supabaseClient || !currentUser || isSyncing) return false;
-
-    try {
-        isSyncing = true;
-        setSyncStatus('syncing', '🔄 Salvando...');
-
-        const dadosOrcamento = {
-            monthlyIncome,
-            percentages,
-            gastosPorMes: expenses,
-            savedConfigurations,
-            currentMonth,
-        };
-
-        const { error } = await supabaseClient
-            .from('Usuarios')
-            .update({ dados_orcamento: dadosOrcamento })
-            .eq('id', currentUser.id); // Salva usando o ID do usuário, que é mais seguro
-
-        if (error) throw error;
-
-        console.log('💾 Dados salvos na nuvem com sucesso');
-        setSyncStatus('synced', '✅ Salvo');
-
-        setTimeout(() => {
-            if (!isSyncing) setSyncStatus('synced', '');
-        }, 2000);
-        return true;
-
-    } catch (error) {
-        console.error('❌ Erro ao salvar dados:', error);
-        setSyncStatus('error', '❌ Erro ao salvar');
-        return false;
+    } catch (err) {
+        console.error("Erro no login:", err);
+        showLoginMessage(`Erro: ${err.message}`, 'error');
     } finally {
-        isSyncing = false;
+        showSpinner(false);
+    }
+}
+
+async function saveUserData() {
+    if (!currentUser) return;
+    setSyncStatus('Salvando...');
+    const { error } = await supabaseClient
+        .from('Usuarios')
+        .update({ dados_orcamento: budgetData })
+        .eq('id', currentUser.id);
+
+    if (error) {
+        console.error("Erro ao salvar:", error);
+        setSyncStatus('Erro ao salvar');
+    } else {
+        console.log("Dados salvos na nuvem!");
+        setSyncStatus('Sincronizado');
     }
 }
 
 // ==========================================================
-// O RESTANTE DO CÓDIGO (Lógica da UI) - (permanece quase o mesmo)
+// LÓGICA DA INTERFACE (UI)
 // ==========================================================
-
-// AUTO-SAVE FUNCTIONALITY
-function scheduleAutoSave() {
-    clearTimeout(window.autoSaveTimeout);
-    window.autoSaveTimeout = setTimeout(async () => {
-        if (currentUser) await saveUserDataToCloud();
-    }, 1500);
-}
-
-// LOGIN/LOGOUT UI FUNCTIONS
-function showLoginScreen() {
-    document.getElementById('login-screen').classList.remove('hidden');
-    document.getElementById('main-app').classList.add('hidden');
-}
 
 function showMainApp() {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('main-app').classList.remove('hidden');
-
-    const usernameEl = document.getElementById('current-username');
-    if (usernameEl && currentUser) {
-        usernameEl.textContent = currentUser.username;
-    }
-    updateAllDisplays();
-}
-
-function showLoginMessage(message, type = 'info') {
-    const messageEl = document.getElementById('login-message');
-    if (messageEl) {
-        messageEl.textContent = message;
-        messageEl.className = `login-message ${type}`;
-        messageEl.classList.remove('hidden');
-    }
-}
-
-function hideLoginMessage() {
-    const messageEl = document.getElementById('login-message');
-    if (messageEl) messageEl.classList.add('hidden');
-}
-
-function setSyncStatus(status, text) {
-    const syncEl = document.getElementById('sync-indicator');
-    if (syncEl) {
-        syncEl.textContent = text;
-        syncEl.className = `sync-indicator ${status}`;
-    }
+    document.getElementById('current-username').textContent = currentUser.username;
+    renderAll();
 }
 
 function logout() {
     currentUser = null;
-    showLoginScreen();
-    hideLoginMessage();
-    setSyncStatus('', '');
-    console.log('👋 Usuário desconectado');
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('main-app').classList.add('hidden');
+    document.getElementById('username').value = '';
 }
 
-// LOGIN EVENT HANDLERS
-function setupLoginHandlers() {
-    const loginBtn = document.getElementById('login-btn');
-    const usernameInput = document.getElementById('username');
-    const logoutBtn = document.getElementById('logout-btn');
-
-    if (loginBtn && usernameInput) {
-        loginBtn.addEventListener('click', async () => {
-            const username = usernameInput.value.trim();
-            if (!username) {
-                showLoginMessage('Por favor, digite um nome de usuário', 'error');
-                return;
-            }
-            const btnText = document.getElementById('login-btn-text');
-            const spinner = document.getElementById('login-spinner');
-            if (btnText) btnText.classList.add('hidden');
-            if (spinner) spinner.classList.remove('hidden');
-            loginBtn.disabled = true;
-
-            const success = await loginUser(username);
-
-            if (btnText) btnText.classList.remove('hidden');
-            if (spinner) spinner.classList.add('hidden');
-            loginBtn.disabled = false;
-            if (success) usernameInput.value = '';
-        });
-        usernameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') loginBtn.click();
-        });
-        usernameInput.addEventListener('input', hideLoginMessage);
-    }
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', () => {
-            if (confirm('Tem certeza que deseja sair?')) {
-                logout();
-            }
-        });
-    }
+function renderAll() {
+    populateMonthSelector();
+    renderCategorySliders();
+    renderExpenseCategoryDropdown();
+    updateDashboard();
+    renderExpensesList();
 }
 
-// Utility functions
-function formatCurrency(amount) {
-    return (amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-function formatPercentage(percentage) {
-    return `${(percentage || 0).toFixed(1).replace('.', ',')}%`;
-}
-
-// SISTEMA DE ABAS FUNCIONAL
-function initializeTabs() {
-    const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContents = document.querySelectorAll('.tab-content');
-    tabButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const targetTab = this.getAttribute('data-tab');
-            tabButtons.forEach(btn => btn.classList.remove('active'));
-            tabContents.forEach(content => content.classList.remove('active'));
-            this.classList.add('active');
-            const targetContent = document.getElementById(`tab-${targetTab}`);
-            if (targetContent) targetContent.classList.add('active');
-            updateTabContent(targetTab);
-        });
-    });
-}
-
-function updateTabContent(targetTab) {
-    switch(targetTab) {
-        case 'dashboard':
-            setTimeout(updateDashboard, 100);
-            break;
-        case 'configurar':
-            updatePercentageDisplays();
-            updateAmounts();
-            updateTotalPercentage();
-            break;
-        case 'gastos':
-            updateExpensesCategoriesGrid();
-            break;
-    }
-}
-
-// Dashboard Functions
 function updateDashboard() {
-    updateIncomeDisplay();
-    updateChart();
-    updateSummaryTable();
-    updateGoalsList();
-    updateCategoryDetails();
+    const month = document.getElementById('month-year').value;
+    const monthlyIncome = budgetData.monthlyIncome || 0;
+    const expensesForMonth = budgetData.expenses[month] || [];
+    
+    document.getElementById('dashboard-income').textContent = formatCurrency(monthlyIncome);
+    
+    updateSummaryTable(monthlyIncome, expensesForMonth);
+    updateChart(expensesForMonth);
 }
 
-function updateIncomeDisplay() {
-    const incomeElement = document.getElementById('dashboard-income');
-    if (incomeElement) incomeElement.textContent = formatCurrency(monthlyIncome);
-}
-
-function getExpensesForMonth(month = currentMonth) {
-    return expenses[month] || [];
-}
-
-function getTotalSpentByCategory(month = currentMonth) {
-    const monthExpenses = getExpensesForMonth(month);
-    const totals = {};
-    Object.keys(categories).forEach(cat => { totals[cat] = 0; });
-    monthExpenses.forEach(expense => {
-        if (totals[expense.category] !== undefined) {
-            totals[expense.category] += expense.amount;
-        }
-    });
-    return totals;
-}
-
-function updateChart() {
-    const ctx = document.getElementById('expenses-chart');
-    if (!ctx) return;
-    const spentByCategory = getTotalSpentByCategory();
-    const data = Object.keys(categories).map(cat => spentByCategory[cat] || 0);
-    const labels = Object.keys(categories).map(cat => categories[cat].name);
-
-    if (chart) chart.destroy();
-
-    chart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: labels,
-            datasets: [{ data: data, backgroundColor: chartColors, borderWidth: 2, borderColor: '#fff' }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } }
-        }
-    });
-    updateChartLegend(labels, chartColors, data);
-}
-
-function updateChartLegend(labels, colors, data) {
-    const legendContainer = document.getElementById('chart-legend');
-    if (!legendContainer) return;
-    legendContainer.innerHTML = labels.map((label, index) => `
-        <div class="legend-item">
-            <div class="legend-color" style="background-color: ${colors[index]}"></div>
-            <span>${label}: ${formatCurrency(data[index])}</span>
-        </div>
-    `).join('');
-}
-
-function updateSummaryTable() {
-    const tbody = document.getElementById('summary-body');
-    if (!tbody) return;
-    const spentByCategory = getTotalSpentByCategory();
-    let totalBudget = 0;
+function updateSummaryTable(income, expenses) {
+    const summaryBody = document.getElementById('summary-body');
+    summaryBody.innerHTML = '';
+    
     let totalSpent = 0;
-
-    tbody.innerHTML = Object.keys(categories).map(catId => {
-        const budget = (monthlyIncome * (percentages[catId] || 0)) / 100;
-        const spent = spentByCategory[catId] || 0;
-        const remaining = budget - spent;
-        const usedPercent = budget > 0 ? (spent / budget) * 100 : 0;
-        totalBudget += budget;
+    
+    for (const id in CATEGORIES) {
+        const percentage = budgetData.percentages[id] || 0;
+        const budgeted = income * (percentage / 100);
+        const spent = expenses
+            .filter(e => e.category === id)
+            .reduce((sum, e) => sum + e.amount, 0);
         totalSpent += spent;
-        let usageClass = usedPercent > 100 ? 'usage-over' : (usedPercent > 80 ? 'usage-warning' : 'usage-good');
-        return `
+        
+        const row = `
             <tr>
-                <td>${categories[catId].name}</td>
-                <td>${formatCurrency(budget)}</td>
+                <td>${CATEGORIES[id]}</td>
+                <td>${formatCurrency(budgeted)}</td>
                 <td>${formatCurrency(spent)}</td>
-                <td>${formatCurrency(remaining)}</td>
-                <td><span class="usage-indicator ${usageClass}">${formatPercentage(usedPercent)}</span></td>
+                <td>${formatCurrency(budgeted - spent)}</td>
             </tr>
         `;
-    }).join('');
-
-    const totalRemaining = totalBudget - totalSpent;
-    const totalUsedPercent = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
-    document.getElementById('total-budget').textContent = formatCurrency(totalBudget);
-    document.getElementById('total-spent').textContent = formatCurrency(totalSpent);
-    document.getElementById('total-remaining').textContent = formatCurrency(totalRemaining);
-    document.getElementById('total-used').textContent = formatPercentage(totalUsedPercent);
+        summaryBody.innerHTML += row;
+    }
 }
 
-function updateGoalsList() {
-    const goalsList = document.getElementById('goals-list');
-    if (!goalsList) return;
-    goalsList.innerHTML = Object.keys(categories).map(catId => `
-        <div class="goal-item">
-            <span class="goal-category">${categories[catId].name}</span>
-            <span class="goal-percentage">${formatPercentage(percentages[catId] || 0)}</span>
-        </div>
-    `).join('');
+function updateChart(expenses) {
+    const ctx = document.getElementById('expenses-chart').getContext('2d');
+    const data = {
+        labels: Object.values(CATEGORIES),
+        datasets: [{
+            data: Object.keys(CATEGORIES).map(id => 
+                expenses.filter(e => e.category === id).reduce((sum, e) => sum + e.amount, 0)
+            ),
+            backgroundColor: ['#007bff', '#6c757d', '#28a745', '#dc3545', '#ffc107', '#17a2b8']
+        }]
+    };
+
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, { type: 'doughnut', data: data, options: { responsive: true, maintainAspectRatio: false } });
 }
 
-function updateCategoryDetails() {
-    const grid = document.getElementById('category-details-grid');
-    if (!grid) return;
-    const monthExpenses = getExpensesForMonth();
-    grid.innerHTML = Object.keys(categories).map(catId => {
-        const categoryExpenses = monthExpenses.filter(expense => expense.category === catId);
-        const expensesList = categoryExpenses.length > 0 ?
-            categoryExpenses.map(expense => `
-                <div class="expense-item">
-                    <div class="expense-description">
-                        <span class="expense-type-icon">${expenseTypeIcons[expense.type] || '🔹'}</span>
-                        <span>${expense.description}</span>
-                    </div>
-                    <span class="expense-amount">${formatCurrency(expense.amount)}</span>
-                </div>
-            `).join('') : '<div class="no-expenses">Nenhum gasto registrado</div>';
-        return `
-            <div class="card category-detail-card">
+function renderCategorySliders() {
+    const container = document.getElementById('category-sliders-container');
+    container.innerHTML = '';
+    for (const id in CATEGORIES) {
+        const value = budgetData.percentages[id] || 0;
+        const sliderHTML = `
+            <div class="card slider-card">
                 <div class="card__body">
-                    <div class="category-detail-header">
-                        <div class="category-detail-color" style="background-color: ${categories[catId].color}"></div>
-                        <h4 class="category-detail-title">${categories[catId].name}</h4>
-                    </div>
-                    <div class="expense-list">${expensesList}</div>
+                    <label for="slider-${id}">${CATEGORIES[id]}</label>
+                    <input type="range" id="slider-${id}" min="0" max="100" value="${value}" data-category="${id}">
+                    <div class="percentage">${value}%</div>
                 </div>
             </div>
         `;
-    }).join('');
+        container.innerHTML += sliderHTML;
+    }
 }
 
-// Expenses Management
-function addExpense() {
-    const category = document.getElementById('expense-category').value;
-    const description = document.getElementById('expense-description').value.trim();
-    const type = document.getElementById('expense-type').value;
-    const amount = parseFloat(document.getElementById('expense-amount').value);
+function renderExpenseCategoryDropdown() {
+    const select = document.getElementById('expense-category');
+    select.innerHTML = '';
+    for (const id in CATEGORIES) {
+        select.innerHTML += `<option value="${id}">${CATEGORIES[id]}</option>`;
+    }
+}
 
-    if (!description || !amount || amount <= 0) {
-        alert('Por favor, preencha todos os campos corretamente.');
+function renderExpensesList() {
+    const month = document.getElementById('month-year').value;
+    document.getElementById('current-month-label').textContent = month;
+    const container = document.getElementById('expenses-list-container');
+    container.innerHTML = '';
+
+    const expensesForMonth = budgetData.expenses[month] || [];
+    if (expensesForMonth.length === 0) {
+        container.innerHTML = '<p>Nenhum gasto neste mês.</p>';
         return;
     }
-    if (!expenses[currentMonth]) expenses[currentMonth] = [];
-    expenses[currentMonth].push({ id: nextExpenseId++, category, description, type, amount });
 
-    document.getElementById('expense-description').value = '';
-    document.getElementById('expense-amount').value = '';
+    expensesForMonth.forEach(expense => {
+        const item = `
+            <div class="expense-item">
+                <div>
+                    <span>${expense.description}</span>
+                    <span class="category">${CATEGORIES[expense.category]}</span>
+                </div>
+                <span>${formatCurrency(expense.amount)}</span>
+            </div>
+        `;
+        container.innerHTML += item;
+    });
+}
+
+// ==========================================================
+// HELPERS E EVENT LISTENERS
+// ==========================================================
+
+const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+const showSpinner = (show) => document.getElementById('login-spinner').classList.toggle('hidden', !show);
+const showLoginMessage = (msg, type) => {
+    const el = document.getElementById('login-message');
+    el.textContent = msg;
+    el.className = `login-message ${type}`;
+    el.classList.remove('hidden');
+};
+const setSyncStatus = (status) => document.getElementById('sync-indicator').textContent = status;
+
+function populateMonthSelector() {
+    const select = document.getElementById('month-year');
+    const year = new Date().getFullYear();
+    select.innerHTML = '';
+    for (let i = 1; i <= 12; i++) {
+        const month = i.toString().padStart(2, '0');
+        const value = `${year}-${month}`;
+        const label = new Date(year, i - 1).toLocaleString('pt-BR', { month: 'long' });
+        select.innerHTML += `<option value="${value}">${label.charAt(0).toUpperCase() + label.slice(1)} ${year}</option>`;
+    }
+    select.value = currentMonth;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Event listener para o botão de login
+    document.getElementById('login-btn').addEventListener('click', () => {
+        const username = document.getElementById('username').value.trim();
+        if (username) loginUser(username);
+    });
     
-    updateExpensesCategoriesGrid();
-    updateDashboard();
-    scheduleAutoSave();
-    alert('Gasto adicionado com sucesso!');
-}
+    // Event listener para o botão de logout
+    document.getElementById('logout-btn').addEventListener('click', logout);
 
-function removeExpense(expenseId) {
-    if (!expenses[currentMonth]) return;
-    const expense = expenses[currentMonth].find(e => e.id === expenseId);
-    if (!expense) return;
-    if (confirm(`Deseja remover o gasto "${expense.description}"?`)) {
-        expenses[currentMonth] = expenses[currentMonth].filter(e => e.id !== expenseId);
-        updateExpensesCategoriesGrid();
+    // Event listener para a troca de abas
+    document.querySelector('.tabs-navigation').addEventListener('click', (e) => {
+        if (e.target.matches('.tab-button')) {
+            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            e.target.classList.add('active');
+            document.getElementById(`tab-${e.target.dataset.tab}`).classList.add('active');
+        }
+    });
+
+    // Event listener para o input de renda mensal
+    document.getElementById('monthly-income').addEventListener('change', (e) => {
+        budgetData.monthlyIncome = parseFloat(e.target.value) || 0;
         updateDashboard();
-        scheduleAutoSave();
-        alert('Gasto removido com sucesso!');
-    }
-}
-
-function updateExpensesCategoriesGrid() {
-    const grid = document.getElementById('expenses-categories-grid');
-    if (!grid) return;
-    const monthExpenses = getExpensesForMonth();
-    grid.innerHTML = Object.keys(categories).map(catId => {
-        const categoryExpenses = monthExpenses.filter(e => e.category === catId);
-        const expensesList = categoryExpenses.length > 0 ?
-            categoryExpenses.map(expense => `
-                <div class="category-expense-item">
-                    <div class="category-expense-info">
-                        <div class="category-expense-description">${expense.description}</div>
-                        <div class="category-expense-type">${expenseTypeIcons[expense.type]} ${expense.type}</div>
-                    </div>
-                    <div>
-                        <div class="category-expense-amount">${formatCurrency(expense.amount)}</div>
-                        <button class="delete-expense" onclick="removeExpense(${expense.id})">Remover</button>
-                    </div>
-                </div>
-            `).join('') : '<div class="no-expenses">Nenhum gasto registrado</div>';
-        return `
-            <div class="category-expenses-column">
-                <div class="category-expenses-header">
-                    <div class="category-expenses-color" style="background-color: ${categories[catId].color}"></div>
-                    <div class="category-expenses-name">${categories[catId].name}</div>
-                </div>
-                <div class="category-expenses-list">${expensesList}</div>
-            </div>
-        `;
-    }).join('');
-}
-
-// Configuration Management
-function showFeedbackMessage(message, type = 'success') {
-    const el = document.getElementById('feedback-message');
-    if (el) {
-        el.textContent = message;
-        el.className = `feedback-message ${type}`;
-        el.classList.remove('hidden');
-        setTimeout(() => el.classList.add('hidden'), 5000);
-    }
-}
-function hideFeedbackMessage() {
-    const el = document.getElementById('feedback-message');
-    if (el) el.classList.add('hidden');
-}
-
-function saveConfiguration(name) {
-    if (!name || name.trim() === '') {
-        showFeedbackMessage('Digite um nome para a configuração', 'warning');
-        return;
-    }
-    const configName = name.trim();
-    savedConfigurations[configName] = { monthlyIncome, percentages: { ...percentages } };
-    updateSavedConfigsList();
-    showFeedbackMessage(`Configuração '${configName}' salva!`, 'success');
-    document.getElementById('config-name').value = '';
-    scheduleAutoSave();
-}
-
-function loadConfiguration(name) {
-    const config = savedConfigurations[name];
-    if (!config) {
-        showFeedbackMessage(`Configuração '${name}' não encontrada`, 'error');
-        return;
-    }
-    monthlyIncome = config.monthlyIncome || 0;
-    percentages = { ...config.percentages };
-    document.getElementById('monthly-income').value = monthlyIncome;
-    Object.keys(percentages).forEach(c => {
-        const slider = document.getElementById(c);
-        if (slider) slider.value = percentages[c];
+        saveUserData();
     });
-    updateAllDisplays();
-    showFeedbackMessage(`Configuração '${name}' carregada!`, 'success');
-    scheduleAutoSave();
-}
 
-function updateSavedConfigsList() {
-    const list = document.getElementById('saved-configs-list');
-    if (!list) return;
-    const names = Object.keys(savedConfigurations);
-    list.innerHTML = names.length === 0 ? '<span class="empty-configs">Nenhuma configuração salva</span>'
-        : names.map(n => `<span class="config-tag" onclick="quickLoadConfig('${n}')">${n}</span>`).join('');
-}
-
-function quickLoadConfig(name) {
-    loadConfiguration(name);
-}
-
-function updateAmounts() {
-    Object.keys(categories).forEach(c => {
-        const amount = (monthlyIncome * (percentages[c] || 0)) / 100;
-        const el = document.getElementById(`value-${c}`);
-        if (el) el.textContent = formatCurrency(amount);
-    });
-}
-function updatePercentageDisplays() {
-    Object.keys(categories).forEach(c => {
-        const el = document.getElementById(`percent-${c}`);
-        if (el) el.textContent = formatPercentage(percentages[c] || 0);
-    });
-}
-function updateTotalPercentage() {
-    const total = Object.values(percentages).reduce((s, v) => s + (v || 0), 0);
-    const el = document.getElementById('total-percentage');
-    if (el) {
-        el.textContent = formatPercentage(total);
-        el.classList.toggle('over-100', total > 100.1);
-        el.classList.toggle('under-100', total < 99.9);
-    }
-}
-
-function handleIncomeInput() {
-    const input = document.getElementById('monthly-income');
-    if (input) {
-        monthlyIncome = parseFloat(input.value) || 0;
-        updateAmounts();
-        updateDashboard();
-        scheduleAutoSave();
-    }
-}
-
-function handleSliderChange(category, value) {
-    percentages[category] = parseFloat(value);
-    updatePercentageDisplays();
-    updateAmounts();
-    updateTotalPercentage();
-    updateDashboard();
-    scheduleAutoSave();
-}
-
-function setupConfigurationHandlers() {
-    document.getElementById('save-config')?.addEventListener('click', () => saveConfiguration(document.getElementById('config-name').value));
-    document.getElementById('load-config')?.addEventListener('click', () => loadConfiguration(document.getElementById('load-name').value));
-    ['config-name', 'load-name'].forEach(id => {
-        document.getElementById(id)?.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') e.target.nextElementSibling.click();
-        });
-        document.getElementById(id)?.addEventListener('input', hideFeedbackMessage);
-    });
-}
-
-function setupEventHandlers() {
-    const monthSelect = document.getElementById('month-year');
-    if (monthSelect) {
-        monthSelect.value = currentMonth;
-        monthSelect.addEventListener('change', (e) => {
-            currentMonth = e.target.value;
+    // Event listener para os sliders de categoria (usando delegação de eventos)
+    document.getElementById('category-sliders-container').addEventListener('input', (e) => {
+        if (e.target.matches('input[type="range"]')) {
+            const categoryId = e.target.dataset.category;
+            const value = parseFloat(e.target.value);
+            budgetData.percentages[categoryId] = value;
+            e.target.nextElementSibling.textContent = `${value}%`; // Atualiza a porcentagem na tela
             updateDashboard();
-            updateExpensesCategoriesGrid();
-            scheduleAutoSave();
-        });
-    }
-    const incomeInput = document.getElementById('monthly-income');
-    if (incomeInput) {
-        incomeInput.value = monthlyIncome;
-        incomeInput.addEventListener('input', handleIncomeInput);
-    }
-    Object.keys(categories).forEach(c => {
-        const slider = document.getElementById(c);
-        if (slider) slider.addEventListener('input', (e) => handleSliderChange(c, e.target.value));
+            saveUserData();
+        }
     });
-    document.getElementById('add-expense')?.addEventListener('click', addExpense);
-    setupConfigurationHandlers();
-}
 
-function updateAllDisplays() {
-    updatePercentageDisplays();
-    updateAmounts();
-    updateTotalPercentage();
-    updateExpensesCategoriesGrid();
-    updateDashboard();
-    updateSavedConfigsList();
-}
+    // Event listener para adicionar um novo gasto
+    document.getElementById('add-expense').addEventListener('click', () => {
+        const month = document.getElementById('month-year').value;
+        const description = document.getElementById('expense-description').value.trim();
+        const amount = parseFloat(document.getElementById('expense-amount').value);
+        const category = document.getElementById('expense-category').value;
 
-// Make functions available globally for inline onclick handlers
-window.quickLoadConfig = quickLoadConfig;
-window.removeExpense = removeExpense;
+        if (!description || !amount) return alert('Preencha a descrição e o valor.');
 
-// ==========================================================
-// INICIALIZAÇÃO PRINCIPAL DO APLICATIVO
-// ==========================================================
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 DOM loaded, initializing app...');
-    // O cliente Supabase já foi inicializado no topo
-    if (supabaseClient) {
-        setupLoginHandlers();
-        initializeTabs();
-        setupEventHandlers();
-        showLoginScreen();
-        console.log('🎉 App initialized successfully - waiting for login');
-    } else {
-        showLoginMessage('Erro fatal: Cliente Supabase não pôde ser inicializado.', 'error');
-    }
+        if (!budgetData.expenses[month]) {
+            budgetData.expenses[month] = [];
+        }
+        budgetData.expenses[month].push({ description, amount, category });
+        
+        renderExpensesList();
+        updateDashboard();
+        saveUserData();
+
+        document.getElementById('expense-description').value = '';
+        document.getElementById('expense-amount').value = '';
+    });
+
+    // Atualiza o dashboard quando o mês muda
+    document.getElementById('month-year').addEventListener('change', () => {
+        updateDashboard();
+        renderExpensesList();
+    });
 });
