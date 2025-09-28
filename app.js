@@ -1,9 +1,19 @@
 // =======================
-// CONFIGURAÇÃO DO SUPABASE
+// CONFIGURAÇÃO DO SUPABASE E GLOBAIS
 // =======================
 const SUPABASE_URL = "https://iballqwxsxkpltyustgj.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYWxscXd4c3hrcGx0eXVzdGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwNTc2MzAsImV4cCI6MjA3NDYzMzYzMH0.Z4WKcwVS5FFfbtaaiyBI0p348_v00pOYDYTq_6bDgGE";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI2NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYWxscXd4c3hrcGx0eXVzdGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwNTc2MzAsImV4cCI6MjA3NDYzMzYzMH0.Z4WKcwVS5FFfbtaaiyBI0p348_v00pOYDYTq_6bDgGE";
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// SUGESTÃO: Centralizar as categorias para facilitar a manutenção
+const CATEGORIAS = {
+    "custos-fixos": "Custos Fixos",
+    "conforto": "Conforto",
+    "metas": "Metas",
+    "prazeres": "Prazeres",
+    "liberdade-financeira": "Liberdade Financeira",
+    "conhecimento": "Conhecimento"
+};
 
 let currentUser = null;
 let expensesChart = null;
@@ -39,9 +49,10 @@ loginBtn.addEventListener("click", async () => {
     if (!username) return alert("Digite um nome de usuário!");
 
     try {
+        // CORREÇÃO: A tabela deve ser "Usuarios" com "U" maiúsculo
         const { data: userData, error: userError } = await supabaseClient
             .from("Usuarios")
-            .upsert({ username })
+            .upsert({ username }, { onConflict: 'username' }) // Garante que o username seja único
             .select()
             .single();
 
@@ -62,7 +73,10 @@ logoutBtn.addEventListener("click", () => {
     showLogin();
     usernameInput.value = "";
     expensesGrid.innerHTML = "";
-    if (expensesChart) expensesChart.destroy();
+    if (expensesChart) {
+        expensesChart.destroy();
+        expensesChart = null;
+    }
 });
 
 // =======================
@@ -106,14 +120,14 @@ function atualizarValores() {
     categorySliders.forEach(slider => {
         const percentSpan = document.getElementById(`percent-${slider.id}`);
         const valueSpan = document.getElementById(`value-${slider.id}`);
-        if(percentSpan) percentSpan.innerText = `${parseFloat(slider.value).toFixed(1)}%`;
-        if(valueSpan) valueSpan.innerText = `R$ ${(monthlyIncome * slider.value / 100).toFixed(2)}`;
+        if (percentSpan) percentSpan.innerText = `${parseFloat(slider.value).toFixed(1)}%`;
+        if (valueSpan) valueSpan.innerText = `R$ ${(monthlyIncome * slider.value / 100).toFixed(2)}`;
     });
 
     let total = 0;
     categorySliders.forEach(slider => total += parseFloat(slider.value));
     const totalPercent = document.getElementById("total-percentage");
-    if(totalPercent) totalPercent.innerText = `${total.toFixed(1)}%`;
+    if (totalPercent) totalPercent.innerText = `${total.toFixed(1)}%`;
 
     dashboardIncome.innerText = `R$ ${monthlyIncome.toFixed(2)}`;
 }
@@ -141,7 +155,12 @@ async function salvarConfiguracao() {
     });
 
     try {
-        const { error } = await supabaseClient.from("configuracoes").upsert(config);
+        // SUGESTÃO: Especificar as colunas de conflito para o upsert funcionar corretamente.
+        // Garanta que `usuario_id` e `nome` formem uma chave única na sua tabela do Supabase.
+        const { error } = await supabaseClient
+            .from("configuracoes")
+            .upsert(config, { onConflict: 'usuario_id, nome' });
+
         if (error) throw error;
         alert("Configuração salva!");
     } catch (err) {
@@ -178,11 +197,14 @@ async function carregarConfiguracoes() {
             .from("configuracoes")
             .select("*")
             .eq("usuario_id", currentUser.id)
-            .order("id", { ascending: true })
-            .limit(1);
+            .order("id", { ascending: false }) // Pega a mais recente
+            .limit(1)
+            .single(); // Use single para obter um objeto, não um array
 
-        if (error) throw error;
-        if (data.length > 0) aplicarConfiguracao(data[0]);
+        if (error && error.code !== 'PGRST116') { // Ignora erro "nenhuma linha encontrada"
+            throw error;
+        }
+        if (data) aplicarConfiguracao(data);
     } catch (err) {
         console.error(err);
     }
@@ -214,15 +236,17 @@ document.getElementById("add-expense")?.addEventListener("click", async () => {
     try {
         const { error } = await supabaseClient.from("gastos").insert([gasto]);
         if (error) throw error;
-        adicionarGastoNaTela(gasto);
-        atualizarDashboard();
+        
+        // SUGESTÃO: Recarregar os gastos do banco para garantir consistência
+        await carregarGastos();
+
+        // Limpar os campos após o sucesso
+        document.getElementById("expense-description").value = "";
+        document.getElementById("expense-amount").value = "";
     } catch (err) {
         console.error(err);
         alert("Erro ao salvar gasto!");
     }
-
-    document.getElementById("expense-description").value = "";
-    document.getElementById("expense-amount").value = "";
 });
 
 async function carregarGastos() {
@@ -239,7 +263,7 @@ async function carregarGastos() {
         if (error) throw error;
         expensesGrid.innerHTML = "";
         data.forEach(adicionarGastoNaTela);
-        atualizarDashboard(data);
+        atualizarDashboard(data); // Passa os dados carregados para o dashboard
     } catch (err) {
         console.error(err);
     }
@@ -248,7 +272,7 @@ async function carregarGastos() {
 function adicionarGastoNaTela(gasto) {
     const card = document.createElement("div");
     card.classList.add("expense-card", "card");
-    card.innerHTML = `<div class="card__body"><strong>${gasto.categoria}</strong><br>${gasto.descricao} - R$ ${gasto.valor.toFixed(2)}</div>`;
+    card.innerHTML = `<div class="card__body"><strong>${CATEGORIAS[gasto.categoria] || gasto.categoria}</strong><br>${gasto.descricao} - R$ ${gasto.valor.toFixed(2)}</div>`;
     expensesGrid.appendChild(card);
 }
 
@@ -258,25 +282,26 @@ document.getElementById("month-year")?.addEventListener("change", carregarGastos
 // DASHBOARD - GRÁFICO E RESUMO
 // =======================
 function atualizarDashboard(gastos = []) {
-    const categorias = ["custos-fixos","conforto","metas","prazeres","liberdade-financeira","conhecimento"];
-    const categoriaNomes = {
-        "custos-fixos":"Custos Fixos","conforto":"Conforto","metas":"Metas",
-        "prazeres":"Prazeres","liberdade-financeira":"Liberdade Financeira","conhecimento":"Conhecimento"
-    };
+    const categorias = Object.keys(CATEGORIAS); // Usa a constante global
+    const categoriaNomes = CATEGORIAS;
 
     const totalPorCategoria = {};
-    categorias.forEach(c => totalPorCategoria[c]=0);
-    gastos.forEach(g => { if(totalPorCategoria[g.categoria]!==undefined) totalPorCategoria[g.categoria]+=g.valor; });
+    categorias.forEach(c => totalPorCategoria[c] = 0);
+    gastos.forEach(g => {
+        if (totalPorCategoria[g.categoria] !== undefined) {
+            totalPorCategoria[g.categoria] += g.valor;
+        }
+    });
 
-    const totalGastos = Object.values(totalPorCategoria).reduce((a,b)=>a+b,0);
+    const totalGastos = Object.values(totalPorCategoria).reduce((a, b) => a + b, 0);
     const renda = parseFloat(monthlyIncomeInput.value) || 0;
 
     summaryBody.innerHTML = "";
-    categorias.forEach(c=>{
+    categorias.forEach(c => {
         const gasto = totalPorCategoria[c];
-        const valorCategoria = (renda * parseFloat(document.getElementById(c)?.value || 0)/100) || 0;
+        const valorCategoria = (renda * parseFloat(document.getElementById(c)?.value || 0) / 100) || 0;
         const restante = valorCategoria - gasto;
-        const usado = valorCategoria>0 ? (gasto/valorCategoria*100).toFixed(1) : 0;
+        const usado = valorCategoria > 0 ? (gasto / valorCategoria * 100).toFixed(1) : 0;
         const row = document.createElement("tr");
         row.innerHTML = `<td>${categoriaNomes[c]}</td><td>R$ ${valorCategoria.toFixed(2)}</td><td>R$ ${gasto.toFixed(2)}</td><td>R$ ${restante.toFixed(2)}</td><td>${usado}%</td>`;
         summaryBody.appendChild(row);
@@ -284,21 +309,21 @@ function atualizarDashboard(gastos = []) {
 
     totalBudgetEl.innerText = `R$ ${renda.toFixed(2)}`;
     totalSpentEl.innerText = `R$ ${totalGastos.toFixed(2)}`;
-    totalRemainingEl.innerText = `R$ ${(renda-totalGastos).toFixed(2)}`;
-    totalUsedEl.innerText = `${((totalGastos/renda)*100).toFixed(1)}%`;
+    totalRemainingEl.innerText = `R$ ${(renda - totalGastos).toFixed(2)}`;
+    totalUsedEl.innerText = renda > 0 ? `${((totalGastos / renda) * 100).toFixed(1)}%` : '0.0%';
 
     const ctx = document.getElementById("expenses-chart")?.getContext("2d");
-    if(ctx){
+    if (ctx) {
         const data = {
-            labels: categorias.map(c=>categoriaNomes[c]),
-            datasets:[{
-                label:"Gastos por Categoria",
-                data: categorias.map(c=>totalPorCategoria[c]),
-                backgroundColor:["#e74c3c","#3498db","#2ecc71","#f39c12","#9b59b6","#1abc9c"]
+            labels: categorias.map(c => categoriaNomes[c]),
+            datasets: [{
+                label: "Gastos por Categoria",
+                data: categorias.map(c => totalPorCategoria[c]),
+                backgroundColor: ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1abc9c"]
             }]
         };
-        if(expensesChart) expensesChart.destroy();
-        expensesChart = new Chart(ctx,{ type:"pie", data, options:{ plugins:{ legend:{ display:true, position:"bottom" }}}});
+        if (expensesChart) expensesChart.destroy();
+        expensesChart = new Chart(ctx, { type: "pie", data, options: { plugins: { legend: { display: true, position: "bottom" } } } });
     }
 }
 
