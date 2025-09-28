@@ -73,17 +73,12 @@ class MockSupabaseClient {
     }
 }
 
-// Mock Supabase object
-const supabase = {
-    createClient: (url, key) => {
-        console.log('🔌 Criando cliente Supabase mock para demo');
-        return new MockSupabaseClient();
-    }
-};
+const SUPABASE_URL = 'https://iballqwxsxkpltyustgj.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYWxscXd4c3hrcGx0eXVzdGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwNTc2MzAsImV4cCI6MjA3NDYzMzYzMH0.Z4WKcwVS5FFfbtaaiyBI0p348_v00pOYDYTq_6bDgGE';
 
-// SUPABASE CONFIGURATION (Mock)
-const SUPABASE_URL = 'https://demo.supabase.co';
-const SUPABASE_ANON_KEY = 'public_key_demo';
+// Cria cliente real
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 
 let supabaseClient = null;
 let currentUser = null;
