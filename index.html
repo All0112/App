@@ -65,12 +65,7 @@
                 <div class="dashboard-title">
                     <h2>Visão Geral</h2>
                     <div class="month-selector">
-                        <select id="month-year" class="form-control">
-                            <option value="2025-09">Setembro 2025</option>
-                            <option value="2025-10">Outubro 2025</option>
-                            <option value="2025-11">Novembro 2025</option>
-                            <option value="2025-12">Dezembro 2025</option>
-                        </select>
+                        <select id="month-year" class="form-control"></select>
                     </div>
                 </div>
                 <div class="income-display">
@@ -98,9 +93,19 @@
                                     <th>Orçado</th>
                                     <th>Gasto</th>
                                     <th>Restante</th>
+                                    <th>Usado</th>
                                 </tr>
                             </thead>
                             <tbody id="summary-body"></tbody>
+                            <tfoot>
+                                <tr class="summary-totals">
+                                    <td><strong>Total</strong></td>
+                                    <td id="total-budget"><strong>R$ 0,00</strong></td>
+                                    <td id="total-spent"><strong>R$ 0,00</strong></td>
+                                    <td id="total-remaining"><strong>R$ 0,00</strong></td>
+                                    <td id="total-used"><strong>0%</strong></td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                 </div>
@@ -111,9 +116,13 @@
             <header class="header">
                 <h2>Configurar Orçamento</h2>
             </header>
-            <div class="form-group">
-                <label for="monthly-income" class="form-label">Renda Mensal Total (R$)</label>
-                <input type="number" id="monthly-income" class="form-control" placeholder="5000.00" min="0">
+            <div class="card">
+                <div class="card__body">
+                    <div class="form-group">
+                        <label for="monthly-income" class="form-label">Renda Mensal Total (R$)</label>
+                        <input type="number" id="monthly-income" class="form-control" placeholder="5000.00" min="0">
+                    </div>
+                </div>
             </div>
             <div id="category-sliders-container" class="sliders-grid">
                 </div>
