@@ -1,16 +1,13 @@
-// =======================
-// CONFIGURAÇÃO DO SUPABASE
-// =======================
-const SUPABASE_URL = "https://iballqwxsxkpltyustgj.supabase.co"; // substitua
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYWxscXd4c3hrcGx0eXVzdGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwNTc2MzAsImV4cCI6MjA3NDYzMzYzMH0.Z4WKcwVS5FFfbtaaiyBI0p348_v00pOYDYTq_6bDgGE"; // substitua
-
-let supabase;
-let currentUser = null;
-let expensesChart = null;
-
-// Espera o DOM carregar
 document.addEventListener("DOMContentLoaded", async () => {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // =======================
+    // CONFIGURAÇÃO DO SUPABASE
+    // =======================
+    const SUPABASE_URL = "https://iballqwxsxkpltyustgj.supabase.co";
+    const SUPABASE_KEY = "SUA_CHAVE_AQUI"; // Substitua pela sua chave
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let currentUser = null;
+    let expensesChart = null;
 
     // =======================
     // ELEMENTOS DO DOM
@@ -131,6 +128,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     async function salvarConfiguracao() {
         if (!currentUser) return alert("Usuário não logado!");
+
         const nome = document.getElementById("config-name").value.trim();
         if (!nome) return alert("Digite um nome para a configuração!");
 
@@ -202,6 +200,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById("prazeres").value = config.prazeres || 0;
         document.getElementById("liberdade-financeira").value = config.liberdade_financeira || 0;
         document.getElementById("conhecimento").value = config.conhecimento || 0;
+
         atualizarValores();
     }
 
@@ -237,8 +236,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     async function carregarGastos() {
         if (!currentUser) return;
-        const mes_ano = document.getElementById("month-year").value;
 
+        const mes_ano = document.getElementById("month-year").value;
         try {
             const { data, error } = await supabase
                 .from("gastos")
@@ -271,37 +270,37 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("month-year").addEventListener("change", carregarGastos);
 
     // =======================
-    // DASHBOARD
+    // DASHBOARD - GRÁFICO E RESUMO
     // =======================
     function atualizarDashboard(gastos = []) {
-        const categorias = ["custos-fixos","conforto","metas","prazeres","liberdade-financeira","conhecimento"];
+        const categorias = ["custos-fixos", "conforto", "metas", "prazeres", "liberdade-financeira", "conhecimento"];
         const categoriaNomes = {
-            "custos-fixos":"Custos Fixos",
-            "conforto":"Conforto",
-            "metas":"Metas",
-            "prazeres":"Prazeres",
-            "liberdade-financeira":"Liberdade Financeira",
-            "conhecimento":"Conhecimento"
+            "custos-fixos": "Custos Fixos",
+            "conforto": "Conforto",
+            "metas": "Metas",
+            "prazeres": "Prazeres",
+            "liberdade-financeira": "Liberdade Financeira",
+            "conhecimento": "Conhecimento"
         };
 
         const totalPorCategoria = {};
-        categorias.forEach(c => totalPorCategoria[c]=0);
+        categorias.forEach(c => totalPorCategoria[c] = 0);
 
         gastos.forEach(g => {
-            if (totalPorCategoria[g.categoria]!==undefined) totalPorCategoria[g.categoria]+=g.valor;
+            if (totalPorCategoria[g.categoria] !== undefined) totalPorCategoria[g.categoria] += g.valor;
         });
 
-        const totalGastos = Object.values(totalPorCategoria).reduce((a,b)=>a+b,0);
+        const totalGastos = Object.values(totalPorCategoria).reduce((a, b) => a + b, 0);
         const renda = parseFloat(monthlyIncomeInput.value) || 0;
 
-        summaryBody.innerHTML="";
-        categorias.forEach(c=>{
+        summaryBody.innerHTML = "";
+        categorias.forEach(c => {
             const gasto = totalPorCategoria[c];
-            const valorCategoria = (renda*parseFloat(document.getElementById(c).value)/100)||0;
-            const restante = valorCategoria-gasto;
-            const usado = valorCategoria>0?(gasto/valorCategoria*100).toFixed(1):0;
-            const row=document.createElement("tr");
-            row.innerHTML=`
+            const valorCategoria = (renda * parseFloat(document.getElementById(c).value)/100) || 0;
+            const restante = valorCategoria - gasto;
+            const usado = valorCategoria > 0 ? (gasto/valorCategoria*100).toFixed(1) : 0;
+            const row = document.createElement("tr");
+            row.innerHTML = `
                 <td>${categoriaNomes[c]}</td>
                 <td>R$ ${valorCategoria.toFixed(2)}</td>
                 <td>R$ ${gasto.toFixed(2)}</td>
@@ -311,28 +310,27 @@ document.addEventListener("DOMContentLoaded", async () => {
             summaryBody.appendChild(row);
         });
 
-        totalBudgetEl.innerText=`R$ ${renda.toFixed(2)}`;
-        totalSpentEl.innerText=`R$ ${totalGastos.toFixed(2)}`;
-        totalRemainingEl.innerText=`R$ ${(renda-totalGastos).toFixed(2)}`;
-        totalUsedEl.innerText=`${((totalGastos/renda)*100).toFixed(1)}%`;
+        totalBudgetEl.innerText = `R$ ${renda.toFixed(2)}`;
+        totalSpentEl.innerText = `R$ ${totalGastos.toFixed(2)}`;
+        totalRemainingEl.innerText = `R$ ${(renda - totalGastos).toFixed(2)}`;
+        totalUsedEl.innerText = `${((totalGastos/renda)*100).toFixed(1)}%`;
 
-        const ctx=document.getElementById("expenses-chart").getContext("2d");
-        const data={
-            labels: categorias.map(c=>categoriaNomes[c]),
-            datasets:[{
-                label:"Gastos por Categoria",
-                data:categorias.map(c=>totalPorCategoria[c]),
-                backgroundColor:["#e74c3c","#3498db","#2ecc71","#f39c12","#9b59b6","#1abc9c"]
+        // Atualiza gráfico
+        const ctx = document.getElementById("expenses-chart").getContext("2d");
+        const data = {
+            labels: categorias.map(c => categoriaNomes[c]),
+            datasets: [{
+                label: "Gastos por Categoria",
+                data: categorias.map(c => totalPorCategoria[c]),
+                backgroundColor: ["#e74c3c","#3498db","#2ecc71","#f39c12","#9b59b6","#1abc9c"]
             }]
         };
 
-        if(expensesChart) expensesChart.destroy();
-        expensesChart=new Chart(ctx,{
-            type:"pie",
+        if (expensesChart) expensesChart.destroy();
+        expensesChart = new Chart(ctx, {
+            type: "pie",
             data,
-            options:{
-                plugins:{legend:{display:true,position:"bottom"}}
-            }
+            options: { plugins: { legend: { display: true, position: "bottom" } } }
         });
     }
 
