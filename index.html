@@ -4,15 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Orçamento Doméstico</title>
-
-    <!-- CSS externo -->
     <link rel="stylesheet" href="style.css">
-
-    <!-- Supabase -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js"></script>
-
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <!-- TELA DE LOGIN -->
@@ -31,6 +23,7 @@
                         </div>
                         <button id="login-btn" class="btn btn--primary btn--full-width">
                             <span id="login-btn-text">Entrar</span>
+                            <span id="login-spinner" class="spinner hidden">⏳</span>
                         </button>
                         <div id="login-message" class="login-message hidden"></div>
                     </div>
@@ -47,6 +40,9 @@
         <div class="user-header">
             <div class="user-info">
                 <span>👤 Usuário: <strong id="current-username"></strong></span>
+                <div class="sync-status">
+                    <span id="sync-indicator" class="sync-indicator">🔄 Sincronizando...</span>
+                </div>
             </div>
             <button id="logout-btn" class="btn btn--outline btn--sm">Sair</button>
         </div>
@@ -68,15 +64,13 @@
                             <option value="2025-07">Julho 2025</option>
                             <option value="2025-08">Agosto 2025</option>
                             <option value="2025-09">Setembro 2025</option>
-                            <option value="2025-10">Outubro 2025</option>
-                            <option value="2025-11">Novembro 2025</option>
-                            <option value="2025-12">Dezembro 2025</option>
                         </select>
                     </div>
                 </div>
                 <div class="income-display">
                     <div class="income-label">Renda Mensal</div>
-                    <div class="income-value" id="dashboard-income">R$ 20.000,00</div>
+                    <div class="income-value" id="dashboard-income">R$ 0,00</div>
+                    <div class="income-indicator"></div>
                 </div>
             </div>
 
@@ -85,7 +79,9 @@
                     <div class="card">
                         <div class="card__body">
                             <h3>Gastos por Categoria</h3>
-                            <canvas id="expenses-chart" style="height:300px;"></canvas>
+                            <div class="chart-container" style="position: relative; height: 300px;">
+                                <canvas id="expenses-chart"></canvas>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -94,27 +90,29 @@
                     <div class="card">
                         <div class="card__body">
                             <h3>Resumo</h3>
-                            <table id="budget-summary">
-                                <thead>
-                                    <tr>
-                                        <th>Categoria</th>
-                                        <th>Orçamento</th>
-                                        <th>Gasto</th>
-                                        <th>Restante</th>
-                                        <th>Usado</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="summary-body"></tbody>
-                                <tfoot>
-                                    <tr>
-                                        <td><strong>Total</strong></td>
-                                        <td id="total-budget"><strong>R$ 0,00</strong></td>
-                                        <td id="total-spent"><strong>R$ 0,00</strong></td>
-                                        <td id="total-remaining"><strong>R$ 0,00</strong></td>
-                                        <td id="total-used"><strong>0%</strong></td>
-                                    </tr>
-                                </tfoot>
-                            </table>
+                            <div class="summary-table">
+                                <table id="budget-summary">
+                                    <thead>
+                                        <tr>
+                                            <th>Categoria</th>
+                                            <th>Orçamento</th>
+                                            <th>Gasto</th>
+                                            <th>Restante</th>
+                                            <th>Usado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="summary-body"></tbody>
+                                    <tfoot>
+                                        <tr class="summary-totals">
+                                            <td><strong>Total</strong></td>
+                                            <td id="total-budget"><strong>R$ 0,00</strong></td>
+                                            <td id="total-spent"><strong>R$ 0,00</strong></td>
+                                            <td id="total-remaining"><strong>R$ 0,00</strong></td>
+                                            <td id="total-used"><strong>0%</strong></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -140,35 +138,7 @@
                     <div class="card__body">
                         <div class="form-group">
                             <label for="monthly-income" class="form-label">Valor Mensal Total (R$)</label>
-                            <input type="number" id="monthly-income" class="form-control" placeholder="20000.00">
-                        </div>
-                        <div class="categories-section">
-                            <div class="categories-grid">
-                                <div class="category-card card">
-                                    <div class="card__body">
-                                        <label>Custos fixos</label>
-                                        <input type="range" id="custos-fixos" class="category-slider" min="0" max="100" value="40" step="0.1">
-                                        <span id="percent-custos-fixos">40%</span>
-                                        <span id="value-custos-fixos">R$ 0,00</span>
-                                    </div>
-                                </div>
-                                <div class="category-card card">
-                                    <div class="card__body">
-                                        <label>Conforto</label>
-                                        <input type="range" id="conforto" class="category-slider" min="0" max="100" value="20" step="0.1">
-                                        <span id="percent-conforto">20%</span>
-                                        <span id="value-conforto">R$ 0,00</span>
-                                    </div>
-                                </div>
-                                <div class="category-card card">
-                                    <div class="card__body">
-                                        <label>Metas</label>
-                                        <input type="range" id="metas" class="category-slider" min="0" max="100" value="5" step="0.1">
-                                        <span id="percent-metas">5%</span>
-                                        <span id="value-metas">R$ 0,00</span>
-                                    </div>
-                                </div>
-                            </div>
+                            <input type="number" id="monthly-income" class="form-control" placeholder="20000.00" min="0" step="0.01">
                         </div>
                     </div>
                 </div>
@@ -177,29 +147,52 @@
 
         <!-- ABA GASTOS -->
         <div id="tab-gastos" class="tab-content">
-            <header class="header"><h2>Gastos Mensais</h2></header>
+            <header class="header">
+                <h2>Gastos Mensais</h2>
+            </header>
             <div class="expenses-section">
                 <div class="card">
                     <div class="card__body">
-                        <div class="form-group">
-                            <label for="expense-category">Categoria</label>
-                            <select id="expense-category" class="form-control">
-                                <option value="custos-fixos">Custos fixos</option>
-                                <option value="conforto">Conforto</option>
-                                <option value="metas">Metas</option>
-                            </select>
+                        <div class="expense-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="expense-category" class="form-label">Categoria</label>
+                                    <select id="expense-category" class="form-control">
+                                        <option value="custos-fixos">Custos fixos</option>
+                                        <option value="conforto">Conforto</option>
+                                        <option value="metas">Metas</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="expense-description" class="form-label">Descrição</label>
+                                    <input type="text" id="expense-description" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label for="expense-amount" class="form-label">Valor (R$)</label>
+                                    <input type="number" id="expense-amount" class="form-control" min="0" step="0.01">
+                                </div>
+                                <button id="add-expense" class="btn btn--primary">Adicionar</button>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="expense-description">Descrição</label>
-                            <input type="text" id="expense-description" class="form-control">
-                        </div>
-                        <div class="form-group">
-                            <label for="expense-amount">Valor (R$)</label>
-                            <input type="number" id="expense-amount" class="form-control">
-                        </div>
-                        <button id="add-expense" class="btn btn--primary">Adicionar</button>
                     </div>
                 </div>
                 <div class="expenses-list">
                     <div class="card">
-                        <div class="card__body" id="expenses-categories-grid"></div
+                        <div class="card__body">
+                            <h3>Gastos do Mês</h3>
+                            <div id="expenses-categories-grid"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SUPABASE -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js"></script>
+    <!-- CHARTJS -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- APP JS -->
+    <script src="app.js"></script>
+</body>
+</html>
