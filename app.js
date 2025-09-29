@@ -93,7 +93,7 @@ async function loginUser(username) {
 
         // Check if user exists
         const { data: existingUser, error: selectError } = await supabaseClient
-            .from('usuarios')
+            .from('Usuarios')
             .select('*')
             .eq('username', username)
             .single();
@@ -132,7 +132,7 @@ async function loginUser(username) {
             };
 
             const { data: newUser, error: insertError } = await supabaseClient
-                .from('usuarios')
+                .from('Usuarios')
                 .insert([{
                     username: username,
                     dados_orcamento: defaultData
@@ -228,7 +228,7 @@ async function saveUserDataToCloud() {
         };
 
         const { error } = await supabaseClient
-            .from('usuarios')
+            .from('Usuarios')
             .update({ 
                 dados_orcamento: dadosOrcamento,
                 updated_at: new Date().toISOString()
