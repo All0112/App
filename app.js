@@ -287,8 +287,9 @@ function showMainApp() {
         usernameEl.textContent = currentUser;
     }
     
-    // Update all displays
-    updateAllDisplays();
+    setTimeout(() => { // <--- ADICIONADO AQUI
+        updateAllDisplays();
+    }, 100);
 }
 
 function showLoginMessage(message, type = 'info') {
@@ -462,7 +463,9 @@ function updateTabContent(targetTab) {
             updateTotalPercentage();
             break;
         case 'gastos':
-            updateExpensesCategoriesGrid();
+            setTimeout(() => { // <--- ADICIONADO AQUI
+                updateExpensesCategoriesGrid();
+            }, 100);
             break;
     }
 }
