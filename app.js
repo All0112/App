@@ -277,19 +277,21 @@ function showLoginScreen() {
     document.getElementById('main-app').classList.add('hidden');
 }
 
+// CÓDIGO CORRIGIDO
 function showMainApp() {
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('main-app').classList.remove('hidden');
-    
-    // Update UI with current user
-    const usernameEl = document.getElementById('current-username');
-    if (usernameEl) {
-        usernameEl.textContent = currentUser;
-    }
-    
-    setTimeout(() => { // <--- ADICIONADO AQUI
-        updateAllDisplays();
-    }, 100);
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('main-app').classList.remove('hidden');
+    
+    // Update UI with current user
+    const usernameEl = document.getElementById('current-username');
+    if (usernameEl) {
+        usernameEl.textContent = currentUser;
+    }
+    
+    // Pede ao navegador para rodar a atualização no momento certo
+    requestAnimationFrame(() => {
+        updateAllDisplays();
+    });
 }
 
 function showLoginMessage(message, type = 'info') {
@@ -448,26 +450,27 @@ function initializeTabs() {
     console.log('✅ Sistema de abas inicializado com sucesso');
 }
 
+// CÓDIGO CORRIGIDO
 function updateTabContent(targetTab) {
-    console.log('🔄 Atualizando conteúdo da aba:', targetTab);
-    
-    switch(targetTab) {
-        case 'dashboard':
-            setTimeout(() => {
-                updateDashboard();
-            }, 100);
-            break;
-        case 'configurar':
-            updatePercentageDisplays();
-            updateAmounts();
-            updateTotalPercentage();
-            break;
-        case 'gastos':
-            setTimeout(() => { // <--- ADICIONADO AQUI
-                updateExpensesCategoriesGrid();
-            }, 100);
-            break;
-    }
+    console.log('🔄 Atualizando conteúdo da aba:', targetTab);
+    
+    switch(targetTab) {
+        case 'dashboard':
+            requestAnimationFrame(() => {
+                updateDashboard();
+            });
+            break;
+        case 'configurar':
+            updatePercentageDisplays();
+            updateAmounts();
+            updateTotalPercentage();
+            break;
+        case 'gastos':
+            requestAnimationFrame(() => {
+                updateExpensesCategoriesGrid();
+            });
+            break;
+    }
 }
 
 // Dashboard Functions
