@@ -1,1083 +1,1130 @@
-// REMOVED MOCK SUPABASE CLIENT - The original mock/simulation code was removed from here.
-// The code now uses the real Supabase library included in your HTML.
+// ===== SUPABASE CONFIGURATION =====
+// IMPORTANT: Replace these placeholders with your actual Supabase credentials
+const SUPABASE_URL = 'https://iballqwxsxkpltyustgj.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYWxscXd4c3hrcGx0eXVzdGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwNTc2MzAsImV4cCI6MjA3NDYzMzYzMH0.Z4WKcwVS5FFfbtaaiyBI0p348_v00pOYDYTq_6bDgGE';
 
-// SUPABASE CONFIGURATION (ALTERADO PARA PRODUÇÃO)
-// ▼▼▼ COPIE E COLE SUAS CREDENCIAIS DO SUPABASE AQUI ▼▼▼
-const SUPABASE_URL = "https://iballqwxsxkpltyustgj.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYWxscXd4c3hrcGx0eXVzdGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwNTc2MzAsImV4cCI6MjA3NDYzMzYzMH0.Z4WKcwVS5FFfbtaaiyBI0p348_v00pOYDYTq_6bDgGE";
-// ▲▲▲ COPIE E COLE SUAS CREDENCIAIS DO SUPABASE AQUI ▲▲▲
+// Initialize Supabase client
+let supabase = null;
 
-let supabaseClient = null;
+// Try to initialize Supabase - will fail with placeholder values
+try {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+} catch (error) {
+    console.warn('Supabase não configurado. Use valores reais para SUPABASE_URL e SUPABASE_KEY');
+}
+
+// ===== GLOBAL VARIABLES =====
 let currentUser = null;
-let isSyncing = false;
-
-// Global variables
-let monthlyIncome = 20000;
-let currentMonth = '2025-09';
-let chart = null;
-
-// Initial percentages based on the example data
+let monthlyIncome = 0;
 let percentages = {
-    'custos-fixos': 40,
-    'conforto': 20,
-    'metas': 5,
-    'prazeres': 5,
-    'liberdade-financeira': 25,
-    'conhecimento': 5
+    'custos-fixos': 16.67,
+    'conforto': 16.67,
+    'metas': 16.67,
+    'prazeres': 16.67,
+    'liberdade-financeira': 16.67,
+    'conhecimento': 16.67
 };
 
-// Sample expenses data to demonstrate functionality
-let expenses = {
-    '2025-09': [
-        { category: 'custos-fixos', description: 'Aluguel', amount: 3000, id: 1, type: 'fixa' },
-        { category: 'custos-fixos', description: 'Conta de luz', amount: 150, id: 2, type: 'fixa' },
-        { category: 'custos-fixos', description: 'Internet', amount: 80, id: 3, type: 'fixa' },
-        { category: 'conforto', description: 'Supermercado', amount: 800, id: 4, type: 'unica' },
-        { category: 'conforto', description: 'Restaurante', amount: 200, id: 5, type: 'unica' },
-        { category: 'metas', description: 'Investimento', amount: 500, id: 6, type: 'fixa' },
-        { category: 'prazeres', description: 'Cinema', amount: 50, id: 7, type: 'unica' },
-        { category: 'prazeres', description: 'Livros', amount: 80, id: 8, type: 'unica' },
-        { category: 'liberdade-financeira', description: 'Reserva de emergência', amount: 1000, id: 9, type: 'fixa' },
-        { category: 'conhecimento', description: 'Curso online', amount: 150, id: 10, type: 'parcelada' }
-    ]
-};
+// Current month/year for expense tracking
+let currentMonth = 9; // October (0-based)
+let currentYear = 2025;
 
-// Configuration management
-let savedConfigurations = {};
-let nextExpenseId = 11;
+// Dashboard month/year (can be different from expenses)
+let dashboardMonth = 9;
+let dashboardYear = 2025;
 
-// Category colors and names
-const categories = {
-    'custos-fixos': { name: 'Custos fixos', color: '#1FB8CD' },
-    'conforto': { name: 'Conforto', color: '#FFC185' },
-    'metas': { name: 'Metas', color: '#B4413C' },
-    'prazeres': { name: 'Prazeres', color: '#ECEBD5' },
-    'liberdade-financeira': { name: 'Liberdade Financeira', color: '#5D878F' },
-    'conhecimento': { name: 'Conhecimento', color: '#DB4545' }
-};
+// Expense storage
+let gastosPorMes = {}; // {year: {month: {category: [expenses]}}}
 
-// Chart.js colors for consistency
-const chartColors = ['#1FB8CD', '#FFC185', '#B4413C', '#ECEBD5', '#5D878F', '#DB4545'];
+// Category configuration
+const categorias = [
+    {id: "custos-fixos", nome: "🏠 Custos fixos", emoji: "🏠", cor: "#1FB8CD"},
+    {id: "conforto", nome: "🛋️ Conforto", emoji: "🛋️", cor: "#FFC185"},
+    {id: "metas", nome: "🎯 Metas", emoji: "🎯", cor: "#B4413C"},
+    {id: "prazeres", nome: "🎉 Prazeres", emoji: "🎉", cor: "#ECEBD5"},
+    {id: "liberdade-financeira", nome: "💰 Liberdade Financeira", emoji: "💰", cor: "#5D878F"},
+    {id: "conhecimento", nome: "📚 Conhecimento", emoji: "📚", cor: "#DB4545"}
+];
 
 // Expense type icons
 const expenseTypeIcons = {
-    'unica': '🔹',
-    'fixa': '🔸',
-    'parcelada': '🔺'
+    'unica': '🛒',
+    'fixa': '📅',
+    'parcelada': '💳'
 };
 
-// SUPABASE FUNCTIONS
-async function initializeSupabase() {
-    try {
-        // A linha abaixo foi alterada para usar o objeto `supabase` global do CDN
-        console.log('🔌 Inicializando Supabase...');
-        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log('✅ Supabase inicializado com sucesso');
-        return true;
-    } catch (error) {
-        console.error('❌ Erro ao inicializar Supabase:', error);
-        showLoginMessage('Erro de conexão com o servidor', 'error');
-        return false;
-    }
-}
+// Chart instance
+let expenseChart = null;
 
-async function loginUser(username) {
-    if (!supabaseClient) {
-        console.error('❌ Supabase não inicializado');
-        return false;
-    }
-
-    try {
-        console.log('🔐 Fazendo login do usuário:', username);
-        setSyncStatus('syncing', '🔄 Conectando...');
-
-        // Check if user exists
-        const { data: existingUser, error: selectError } = await supabaseClient
-            .from('Usuarios')
-            .select('*')
-            .eq('username', username)
-            .single();
-
-        if (selectError && selectError.code !== 'PGRST116') {
-            // PGRST116 = not found, which is OK for new users
-            throw selectError;
-        }
-
-        let userData;
-        
-        if (existingUser) {
-            console.log('👤 Usuário existente encontrado');
-            userData = existingUser;
-            showLoginMessage('Login realizado com sucesso!', 'success');
-        } else {
-            console.log('👤 Criando novo usuário...');
-            
-            // Create new user with default data
-            const defaultData = {
-                monthlyIncome: 20000,
-                percentages: {
-                    'custos-fixos': 40,
-                    'conforto': 20,
-                    'metas': 5,
-                    'prazeres': 5,
-                    'liberdade-financeira': 25,
-                    'conhecimento': 5
-                },
-                gastosPorMes: {
-                    '2025-09': []
-                },
-                savedConfigurations: {},
-                currentMonth: '2025-09',
-                currentYear: 2025
-            };
-
-            const { data: newUser, error: insertError } = await supabaseClient
-                .from('Usuarios')
-                .insert([{
-                    username: username,
-                    dados_orcamento: defaultData
-                }])
-                .select()
-                .single();
-
-            if (insertError) {
-                throw insertError;
-            }
-
-            userData = newUser;
-            showLoginMessage('Conta criada e login realizado com sucesso!', 'success');
-        }
-
-        // Load user data
-        await loadUserDataFromCloud(userData);
-        
-        currentUser = username;
-        showMainApp();
-        setSyncStatus('synced', '✅ Sincronizado');
-        
-        return true;
-
-    } catch (error) {
-        console.error('❌ Erro no login:', error);
-        setSyncStatus('error', '❌ Erro de conexão');
-        showLoginMessage('Erro ao fazer login: ' + (error.message || 'Erro desconhecido'), 'error');
-        return false;
-    }
-}
-
-async function loadUserDataFromCloud(userData) {
-    try {
-        console.log('📥 Carregando dados do usuário da nuvem...');
-        
-        const dadosOrcamento = userData.dados_orcamento || {};
-        
-        // Load data with fallbacks
-        monthlyIncome = dadosOrcamento.monthlyIncome || 20000;
-        percentages = dadosOrcamento.percentages || {
-            'custos-fixos': 40,
-            'conforto': 20,
-            'metas': 5,
-            'prazeres': 5,
-            'liberdade-financeira': 25,
-            'conhecimento': 5
-        };
-        expenses = dadosOrcamento.gastosPorMes || { '2025-09': [] };
-        savedConfigurations = dadosOrcamento.savedConfigurations || {};
-        currentMonth = dadosOrcamento.currentMonth || '2025-09';
-        
-        // Find highest expense ID to prevent conflicts
-        let maxId = 0;
-        Object.values(expenses).forEach(monthExpenses => {
-            monthExpenses.forEach(expense => {
-                if (expense.id > maxId) {
-                    maxId = expense.id;
-                }
-            });
-        });
-        nextExpenseId = maxId + 1;
-        
-        console.log('✅ Dados carregados da nuvem:', {
-            monthlyIncome,
-            currentMonth,
-            expensesCount: Object.keys(expenses).length
-        });
-
-    } catch (error) {
-        console.error('❌ Erro ao carregar dados:', error);
-        // Use default data if loading fails
-        console.log('🔄 Usando dados padrão devido ao erro');
-    }
-}
-
-async function saveUserDataToCloud() {
-    if (!supabaseClient || !currentUser || isSyncing) {
-        return false;
-    }
-
-    try {
-        isSyncing = true;
-        setSyncStatus('syncing', '🔄 Salvando...');
-        
-        const dadosOrcamento = {
-            monthlyIncome,
-            percentages,
-            gastosPorMes: expenses,
-            savedConfigurations,
-            currentMonth,
-            currentYear: parseInt(currentMonth.split('-')[0])
-        };
-
-        const { error } = await supabaseClient
-            .from('Usuarios')
-            .update({ 
-                dados_orcamento: dadosOrcamento,
-                updated_at: new Date().toISOString()
-            })
-            .eq('username', currentUser);
-
-        if (error) {
-            throw error;
-        }
-
-        console.log('💾 Dados salvos na nuvem com sucesso');
-        setSyncStatus('synced', '✅ Salvo');
-        
-        // Hide sync indicator after a delay
-        setTimeout(() => {
-            if (!isSyncing) {
-                setSyncStatus('synced', '');
-            }
-        }, 2000);
-
-        return true;
-
-    } catch (error) {
-        console.error('❌ Erro ao salvar dados:', error);
-        setSyncStatus('error', '❌ Erro ao salvar');
-        return false;
-    } finally {
-        isSyncing = false;
-    }
-}
-
-// AUTO-SAVE FUNCTIONALITY
-function scheduleAutoSave() {
-    // Debounced auto-save to prevent excessive requests
-    clearTimeout(window.autoSaveTimeout);
-    window.autoSaveTimeout = setTimeout(async () => {
-        if (currentUser) {
-            await saveUserDataToCloud();
-        }
-    }, 1500); // Save 1.5 seconds after last change
-}
-
-// LOGIN/LOGOUT UI FUNCTIONS
-function showLoginScreen() {
-    document.getElementById('login-screen').classList.remove('hidden');
-    document.getElementById('main-app').classList.add('hidden');
-}
-
-function showMainApp() {
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('main-app').classList.remove('hidden');
-    
-    // Update UI with current user
-    const usernameEl = document.getElementById('current-username');
-    if (usernameEl) {
-        usernameEl.textContent = currentUser;
-    }
-    
-    // Update all displays
-    updateAllDisplays();
-}
-
-function showLoginMessage(message, type = 'info') {
-    const messageEl = document.getElementById('login-message');
-    if (messageEl) {
-        messageEl.textContent = message;
-        messageEl.className = `login-message ${type}`;
-        messageEl.classList.remove('hidden');
-    }
-}
-
-function hideLoginMessage() {
-    const messageEl = document.getElementById('login-message');
-    if (messageEl) {
-        messageEl.classList.add('hidden');
-    }
-}
-
-function setSyncStatus(status, text) {
-    const syncEl = document.getElementById('sync-indicator');
-    if (syncEl) {
-        syncEl.textContent = text;
-        syncEl.className = `sync-indicator ${status}`;
-    }
-}
-
-function logout() {
-    currentUser = null;
-    
-    // Reset to default data
-    monthlyIncome = 20000;
-    currentMonth = '2025-09';
-    percentages = {
-        'custos-fixos': 40,
-        'conforto': 20,
-        'metas': 5,
-        'prazeres': 5,
-        'liberdade-financeira': 25,
-        'conhecimento': 5
-    };
-    expenses = {};
-    savedConfigurations = {};
-    nextExpenseId = 1;
-    
-    showLoginScreen();
-    hideLoginMessage();
-    setSyncStatus('', '');
-    
-    console.log('👋 Usuário desconectado');
-}
-
-// LOGIN EVENT HANDLERS
-function setupLoginHandlers() {
-    const loginBtn = document.getElementById('login-btn');
-    const usernameInput = document.getElementById('username');
-    const logoutBtn = document.getElementById('logout-btn');
-    
-    if (loginBtn && usernameInput) {
-        loginBtn.addEventListener('click', async () => {
-            const username = usernameInput.value.trim();
-            if (!username) {
-                showLoginMessage('Por favor, digite um nome de usuário', 'error');
-                return;
-            }
-            
-            // Show loading state
-            const btnText = document.getElementById('login-btn-text');
-            const spinner = document.getElementById('login-spinner');
-            if (btnText) btnText.classList.add('hidden');
-            if (spinner) spinner.classList.remove('hidden');
-            loginBtn.disabled = true;
-            
-            const success = await loginUser(username);
-            
-            // Reset button state
-            if (btnText) btnText.classList.remove('hidden');
-            if (spinner) spinner.classList.add('hidden');
-            loginBtn.disabled = false;
-            
-            if (success) {
-                usernameInput.value = '';
-            }
-        });
-        
-        usernameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                loginBtn.click();
-            }
-        });
-        
-        usernameInput.addEventListener('input', hideLoginMessage);
-    }
-    
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', () => {
-            if (confirm('Tem certeza que deseja sair? Dados não salvos serão perdidos.')) {
-                logout();
-            }
-        });
-    }
-}
-
-// Utility functions
+// ===== UTILITY FUNCTIONS =====
 function formatCurrency(amount) {
-    if (isNaN(amount) || amount === 0) {
-        return 'R$ 0,00';
-    }
-    return 'R$ ' + amount.toLocaleString('pt-BR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    });
+    if (isNaN(amount) || amount === 0) {
+        return 'R$ 0,00';
+    }
+    
+    const numericAmount = Number(amount);
+    
+    return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+    }).format(numericAmount);
 }
 
 function formatPercentage(percentage) {
-    if (isNaN(percentage)) {
-        return '0,0%';
-    }
-    return percentage.toLocaleString('pt-BR', {
-        minimumFractionDigits: 1,
-        maximumFractionDigits: 1
-    }) + '%';
+    if (isNaN(percentage)) {
+        return '0,0%';
+    }
+    return percentage.toLocaleString('pt-BR', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1
+    }) + '%';
 }
 
-// SISTEMA DE ABAS FUNCIONAL
-function initializeTabs() {
-    console.log('Inicializando sistema de abas...');
-    
-    const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContents = document.querySelectorAll('.tab-content');
-    
-    tabButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const targetTab = this.getAttribute('data-tab');
-            console.log('=== Aba clicada:', targetTab);
-            
-            // Remove active from all buttons
-            tabButtons.forEach(btn => btn.classList.remove('active'));
-            
-            // Remove active from all contents
-            tabContents.forEach(content => content.classList.remove('active'));
-            
-            // Add active to clicked button
-            this.classList.add('active');
-            
-            // Add active to corresponding content
-            const targetContent = document.getElementById(`tab-${targetTab}`);
-            if (targetContent) {
-                targetContent.classList.add('active');
-            }
-            
-            // Update content when tab changes
-            updateTabContent(targetTab);
-        });
-    });
-    
-    console.log('✅ Sistema de abas inicializado com sucesso');
+function getMonthName(monthIndex) {
+    const months = [
+        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    return months[monthIndex];
 }
 
-function updateTabContent(targetTab) {
-    console.log('🔄 Atualizando conteúdo da aba:', targetTab);
-    
-    switch(targetTab) {
-        case 'dashboard':
-            setTimeout(() => {
-                updateDashboard();
-            }, 100);
-            break;
-        case 'configurar':
-            updatePercentageDisplays();
-            updateAmounts();
-            updateTotalPercentage();
-            break;
-        case 'gastos':
-            updateExpensesCategoriesGrid();
-            break;
-    }
+// ===== THEME MANAGEMENT =====
+function initTheme() {
+    const savedTheme = localStorage.getItem('budget-app-theme') || 'light';
+    applyTheme(savedTheme);
+    updateThemeIcon(savedTheme);
 }
 
-// Dashboard Functions
+function applyTheme(theme) {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+        root.setAttribute('data-color-scheme', 'dark');
+    } else {
+        root.setAttribute('data-color-scheme', 'light');
+    }
+}
+
+function toggleTheme() {
+    const currentTheme = localStorage.getItem('budget-app-theme') || 'light';
+    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+    
+    localStorage.setItem('budget-app-theme', newTheme);
+    applyTheme(newTheme);
+    updateThemeIcon(newTheme);
+}
+
+function updateThemeIcon(theme) {
+    const themeIcon = document.querySelector('.theme-icon');
+    if (themeIcon) {
+        themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+}
+
+// ===== USER AUTHENTICATION =====
+function showLoginModal() {
+    const modal = document.getElementById('login-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+    }
+}
+
+function hideLoginModal() {
+    const modal = document.getElementById('login-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+async function handleLogin(username) {
+    try {
+        currentUser = username.trim();
+        
+        // Save to localStorage
+        localStorage.setItem('budget-app-username', currentUser);
+        
+        // Create or get user profile in Supabase if available
+        if (supabase) {
+            await createUserProfile(currentUser);
+            await loadUserData();
+        } else {
+            // Load from localStorage if Supabase not available
+            loadLocalData();
+        }
+        
+        // Update UI
+        updateUserWelcome();
+        hideLoginModal();
+        updateAllDisplays();
+        
+    } catch (error) {
+        console.error('Erro no login:', error);
+        alert('Erro ao fazer login. Tente novamente.');
+    }
+}
+
+async function createUserProfile(username) {
+    if (!supabase) return;
+    
+    try {
+        // Check if user already exists
+        const { data: existingUser } = await supabase
+            .from('perfis')
+            .select('username')
+            .eq('username', username)
+            .single();
+        
+        if (!existingUser) {
+            // Create new user
+            const { error } = await supabase
+                .from('perfis')
+                .insert([{ username: username }]);
+            
+            if (error) throw error;
+        }
+    } catch (error) {
+        console.error('Erro ao criar perfil:', error);
+    }
+}
+
+function updateUserWelcome() {
+    const welcomeElement = document.getElementById('user-welcome');
+    if (welcomeElement && currentUser) {
+        welcomeElement.textContent = `Olá, ${currentUser}!`;
+    }
+}
+
+function checkUserLogin() {
+    const savedUser = localStorage.getItem('budget-app-username');
+    
+    if (savedUser) {
+        currentUser = savedUser;
+        updateUserWelcome();
+        
+        if (supabase) {
+            loadUserData();
+        } else {
+            loadLocalData();
+        }
+        
+        updateAllDisplays();
+    } else {
+        showLoginModal();
+    }
+}
+
+// ===== SUPABASE DATA FUNCTIONS =====
+async function loadUserData() {
+    if (!supabase || !currentUser) return;
+    
+    try {
+        // Load configurations
+        const { data: config } = await supabase
+            .from('configuracoes')
+            .select('*')
+            .eq('username', currentUser)
+            .single();
+        
+        if (config) {
+            monthlyIncome = config.renda || 0;
+            percentages = config.percentages || percentages;
+        }
+        
+        // Load expenses for current month
+        await loadExpensesFromSupabase();
+        
+    } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+    }
+}
+
+async function saveUserConfig() {
+    if (!supabase || !currentUser) {
+        saveLocalData();
+        return;
+    }
+    
+    try {
+        const configData = {
+            username: currentUser,
+            renda: monthlyIncome,
+            percentages: percentages
+        };
+        
+        const { error } = await supabase
+            .from('configuracoes')
+            .upsert(configData);
+        
+        if (error) throw error;
+        
+    } catch (error) {
+        console.error('Erro ao salvar configuração:', error);
+        saveLocalData(); // Fallback to localStorage
+    }
+}
+
+async function saveExpenseToSupabase(expense, category, month, year) {
+    if (!supabase || !currentUser) return;
+    
+    try {
+        const expenseData = {
+            username: currentUser,
+            ano: year,
+            mes: month,
+            categoria: category,
+            tipo: expense.type,
+            item: expense.name,
+            valor: expense.amount,
+            parcelaAtual: expense.installments ? expense.installments.current : 1,
+            totalParcelas: expense.installments ? expense.installments.total : 1,
+            created_at: new Date().toISOString()
+        };
+        
+        const { error } = await supabase
+            .from('gastos')
+            .insert([expenseData]);
+        
+        if (error) throw error;
+        
+    } catch (error) {
+        console.error('Erro ao salvar gasto:', error);
+    }
+}
+
+async function loadExpensesFromSupabase() {
+    if (!supabase || !currentUser) return;
+    
+    try {
+        const { data: expenses, error } = await supabase
+            .from('gastos')
+            .select('*')
+            .eq('username', currentUser);
+        
+        if (error) throw error;
+        
+        // Organize expenses by year/month/category
+        gastosPorMes = {};
+        
+        expenses.forEach(expense => {
+            const year = expense.ano;
+            const month = expense.mes;
+            const category = expense.categoria;
+            
+            if (!gastosPorMes[year]) gastosPorMes[year] = {};
+            if (!gastosPorMes[year][month]) gastosPorMes[year][month] = {};
+            if (!gastosPorMes[year][month][category]) gastosPorMes[year][month][category] = [];
+            
+            const expenseObj = {
+                id: expense.id,
+                name: expense.item,
+                amount: expense.valor,
+                type: expense.tipo,
+                installments: expense.totalParcelas > 1 ? {
+                    current: expense.parcelaAtual,
+                    total: expense.totalParcelas
+                } : null,
+                createdAt: expense.created_at
+            };
+            
+            gastosPorMes[year][month][category].push(expenseObj);
+        });
+        
+    } catch (error) {
+        console.error('Erro ao carregar gastos:', error);
+    }
+}
+
+async function removeExpenseFromSupabase(expenseId) {
+    if (!supabase) return;
+    
+    try {
+        const { error } = await supabase
+            .from('gastos')
+            .delete()
+            .eq('id', expenseId);
+        
+        if (error) throw error;
+        
+    } catch (error) {
+        console.error('Erro ao remover gasto:', error);
+    }
+}
+
+// ===== LOCAL STORAGE FALLBACK =====
+function saveLocalData() {
+    const data = {
+        monthlyIncome,
+        percentages,
+        currentMonth,
+        currentYear,
+        dashboardMonth,
+        dashboardYear,
+        gastosPorMes
+    };
+    
+    try {
+        localStorage.setItem('budget-app-data', JSON.stringify(data));
+    } catch (error) {
+        console.error('Erro ao salvar dados locais:', error);
+    }
+}
+
+function loadLocalData() {
+    try {
+        const saved = localStorage.getItem('budget-app-data');
+        if (saved) {
+            const data = JSON.parse(saved);
+            
+            monthlyIncome = data.monthlyIncome || 0;
+            percentages = data.percentages || percentages;
+            currentMonth = data.currentMonth || 9;
+            currentYear = data.currentYear || 2025;
+            dashboardMonth = data.dashboardMonth || currentMonth;
+            dashboardYear = data.dashboardYear || currentYear;
+            gastosPorMes = data.gastosPorMes || {};
+        }
+    } catch (error) {
+        console.error('Erro ao carregar dados locais:', error);
+    }
+}
+
+// ===== TAB MANAGEMENT =====
+function switchTab(tabName) {
+    // Hide all tab contents
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Remove active class from all tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Show selected tab content and activate button
+    const targetTab = document.getElementById(tabName);
+    const targetBtn = document.querySelector(`[data-tab="${tabName}"]`);
+    
+    if (targetTab) targetTab.classList.add('active');
+    if (targetBtn) targetBtn.classList.add('active');
+    
+    // Update displays based on active tab
+    if (tabName === 'dashboard') {
+        updateDashboard();
+    } else if (tabName === 'gastos') {
+        updateExpensesDisplay();
+    }
+}
+
+// ===== DASHBOARD FUNCTIONS =====
 function updateDashboard() {
-    console.log('📊 Atualizando dashboard completo...');
-    updateIncomeDisplay();
-    updateChart();
-    updateSummaryTable();
-    updateGoalsList();
-    updateCategoryDetails();
+    updateDashboardMonthDisplay();
+    updateSummaryCards();
+    updateChart();
+    updateSummaryTable();
 }
 
-function updateIncomeDisplay() {
-    const incomeElement = document.getElementById('dashboard-income');
-    if (incomeElement) {
-        incomeElement.textContent = formatCurrency(monthlyIncome);
-    }
+function updateDashboardMonthDisplay() {
+    const monthDisplay = document.getElementById('dashboard-month-display');
+    if (monthDisplay) {
+        monthDisplay.textContent = `${getMonthName(dashboardMonth)} ${dashboardYear}`;
+    }
 }
 
-function getExpensesForMonth(month = currentMonth) {
-    return expenses[month] || [];
+function navigateDashboardMonth(direction) {
+    if (direction === 'next') {
+        dashboardMonth++;
+        if (dashboardMonth > 11) {
+            dashboardMonth = 0;
+            dashboardYear++;
+        }
+    } else {
+        dashboardMonth--;
+        if (dashboardMonth < 0) {
+            dashboardMonth = 11;
+            dashboardYear--;
+        }
+    }
+    
+    updateDashboard();
 }
 
-function getTotalSpentByCategory(month = currentMonth) {
-    const monthExpenses = getExpensesForMonth(month);
-    const totals = {};
-    
-    Object.keys(categories).forEach(cat => {
-        totals[cat] = 0;
-    });
-    
-    monthExpenses.forEach(expense => {
-        totals[expense.category] = (totals[expense.category] || 0) + expense.amount;
-    });
-    
-    return totals;
+function updateSummaryCards() {
+    const totalGasto = getTotalGastoMes(dashboardMonth, dashboardYear);
+    const disponivel = monthlyIncome - totalGasto;
+    
+    const rendaDisplay = document.getElementById('renda-display');
+    const gastoDisplay = document.getElementById('gasto-display');
+    const disponivelDisplay = document.getElementById('disponivel-display');
+    
+    if (rendaDisplay) rendaDisplay.textContent = formatCurrency(monthlyIncome);
+    if (gastoDisplay) gastoDisplay.textContent = formatCurrency(totalGasto);
+    if (disponivelDisplay) {
+        disponivelDisplay.textContent = formatCurrency(disponivel);
+        disponivelDisplay.style.color = disponivel >= 0 ? 'var(--color-success)' : 'var(--color-error)';
+    }
 }
 
 function updateChart() {
-    const ctx = document.getElementById('expenses-chart');
-    if (!ctx) return;
-    
-    const spentByCategory = getTotalSpentByCategory();
-    const data = Object.keys(categories).map(cat => spentByCategory[cat] || 0);
-    const labels = Object.keys(categories).map(cat => categories[cat].name);
-    const colors = Object.keys(categories).map((cat, index) => chartColors[index % chartColors.length]);
-    
-    if (chart) {
-        chart.destroy();
-    }
-    
-    chart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: labels,
-            datasets: [{
-                data: data,
-                backgroundColor: colors,
-                borderWidth: 2,
-                borderColor: '#fff'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                }
-            }
-        }
-    });
-    
-    updateChartLegend(labels, colors, data);
+    const canvas = document.getElementById('expense-chart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Destroy existing chart
+    if (expenseChart) {
+        expenseChart.destroy();
+    }
+    
+    const chartData = getChartData();
+    
+    expenseChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: chartData.labels,
+            datasets: [{
+                data: chartData.values,
+                backgroundColor: ['#1FB8CD', '#FFC185', '#B4413C', '#ECEBD5', '#5D878F', '#DB4545'],
+                borderWidth: 2,
+                borderColor: '#ffffff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 20,
+                        usePointStyle: true,
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.parsed;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                            return `${context.label}: ${formatCurrency(value)} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
-function updateChartLegend(labels, colors, data) {
-    const legendContainer = document.getElementById('chart-legend');
-    if (!legendContainer) return;
-    
-    legendContainer.innerHTML = labels.map((label, index) => {
-        const amount = formatCurrency(data[index]);
-        return `
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: ${colors[index]}"></div>
-                <span>${label}: ${amount}</span>
-            </div>
-        `;
-    }).join('');
+function getChartData() {
+    const labels = [];
+    const values = [];
+    
+    categorias.forEach(categoria => {
+        const gasto = getCategoryTotal(categoria.id, dashboardMonth, dashboardYear);
+        if (gasto > 0) {
+            labels.push(categoria.nome);
+            values.push(gasto);
+        }
+    });
+    
+    // Se não há gastos, mostrar categorias com budget
+    if (values.length === 0 && monthlyIncome > 0) {
+        categorias.forEach(categoria => {
+            const budget = getCategoryBudget(categoria.id);
+            if (budget > 0) {
+                labels.push(categoria.nome);
+                values.push(budget);
+            }
+        });
+    }
+    
+    return { labels, values };
 }
 
 function updateSummaryTable() {
-    const tbody = document.getElementById('summary-body');
-    if (!tbody) return;
-    
-    const spentByCategory = getTotalSpentByCategory();
-    let totalBudget = 0;
-    let totalSpent = 0;
-    
-    const rows = Object.keys(categories).map(catId => {
-        const category = categories[catId];
-        const budget = (monthlyIncome * percentages[catId]) / 100;
-        const spent = spentByCategory[catId] || 0;
-        const remaining = budget - spent;
-        const usedPercent = budget > 0 ? (spent / budget) * 100 : 0;
-        
-        totalBudget += budget;
-        totalSpent += spent;
-        
-        let usageClass = 'usage-good';
-        if (usedPercent > 100) usageClass = 'usage-over';
-        else if (usedPercent > 80) usageClass = 'usage-warning';
-        
-        return `
-            <tr>
-                <td>${category.name}</td>
-                <td>${formatCurrency(budget)}</td>
-                <td>${formatCurrency(spent)}</td>
-                <td>${formatCurrency(remaining)}</td>
-                <td><span class="usage-indicator ${usageClass}">${formatPercentage(usedPercent)}</span></td>
-            </tr>
-        `;
-    }).join('');
-    
-    tbody.innerHTML = rows;
-    
-    // Update totals
-    const totalRemaining = totalBudget - totalSpent;
-    const totalUsedPercent = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
-    
-    const totalBudgetEl = document.getElementById('total-budget');
-    const totalSpentEl = document.getElementById('total-spent');
-    const totalRemainingEl = document.getElementById('total-remaining');
-    const totalUsedEl = document.getElementById('total-used');
-    
-    if (totalBudgetEl) totalBudgetEl.textContent = formatCurrency(totalBudget);
-    if (totalSpentEl) totalSpentEl.textContent = formatCurrency(totalSpent);
-    if (totalRemainingEl) totalRemainingEl.textContent = formatCurrency(totalRemaining);
-    if (totalUsedEl) totalUsedEl.textContent = formatPercentage(totalUsedPercent);
+    const tbody = document.getElementById('summary-table-body');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+    
+    categorias.forEach(categoria => {
+        const budget = getCategoryBudget(categoria.id);
+        const gasto = getCategoryTotal(categoria.id, dashboardMonth, dashboardYear);
+        const deveGastar = Math.max(0, budget - gasto);
+        const utilizado = budget > 0 ? (gasto / budget) * 100 : 0;
+        
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 12px; height: 12px; background: ${categoria.cor}; border-radius: 50%;"></div>
+                    ${categoria.nome}
+                </div>
+            </td>
+            <td>${formatCurrency(budget)}</td>
+            <td>${formatCurrency(gasto)}</td>
+            <td>${formatCurrency(deveGastar)}</td>
+            <td>${formatPercentage(utilizado)}</td>
+            <td>
+                <span class="status ${getStatusClass(utilizado)}">
+                    ${getStatusText(utilizado)}
+                </span>
+            </td>
+        `;
+        
+        tbody.appendChild(row);
+    });
 }
 
-function updateGoalsList() {
-    const goalsList = document.getElementById('goals-list');
-    if (!goalsList) return;
-    
-    goalsList.innerHTML = Object.keys(categories).map(catId => {
-        const category = categories[catId];
-        return `
-            <div class="goal-item">
-                <span class="goal-category">${category.name}</span>
-                <span class="goal-percentage">${formatPercentage(percentages[catId])}</span>
-            </div>
-        `;
-    }).join('');
+function getStatusClass(percentage) {
+    if (percentage <= 50) return 'status--success';
+    if (percentage <= 80) return 'status--warning';
+    return 'status--error';
 }
 
-function updateCategoryDetails() {
-    const grid = document.getElementById('category-details-grid');
-    if (!grid) return;
-    
-    const monthExpenses = getExpensesForMonth();
-    
-    grid.innerHTML = Object.keys(categories).map(catId => {
-        const category = categories[catId];
-        const categoryExpenses = monthExpenses.filter(expense => expense.category === catId);
-        
-        const expensesList = categoryExpenses.length > 0 ? 
-            categoryExpenses.map(expense => `
-                <div class="expense-item">
-                    <div class="expense-description">
-                        <span class="expense-type-icon">${expenseTypeIcons[expense.type] || '🔹'}</span>
-                        <span>${expense.description}</span>
-                    </div>
-                    <span class="expense-amount">${formatCurrency(expense.amount)}</span>
-                </div>
-            `).join('') : 
-            '<div class="no-expenses">Nenhum gasto registrado</div>';
-        
-        return `
-            <div class="card category-detail-card">
-                <div class="card__body">
-                    <div class="category-detail-header">
-                        <div class="category-detail-color" style="background-color: ${category.color}"></div>
-                        <h4 class="category-detail-title">${category.name}</h4>
-                    </div>
-                    <div class="expense-list">
-                        ${expensesList}
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
+function getStatusText(percentage) {
+    if (percentage <= 50) return '✅ Ótimo';
+    if (percentage <= 80) return '⚠️ Atenção';
+    return '🚨 Limite';
 }
 
-// Expenses Management
-function addExpense() {
-    const categorySelect = document.getElementById('expense-category');
-    const descriptionInput = document.getElementById('expense-description');
-    const typeSelect = document.getElementById('expense-type');
-    const amountInput = document.getElementById('expense-amount');
-    
-    if (!categorySelect || !descriptionInput || !typeSelect || !amountInput) {
-        return;
-    }
-    
-    const category = categorySelect.value;
-    const description = descriptionInput.value.trim();
-    const type = typeSelect.value;
-    const amount = parseFloat(amountInput.value);
-    
-    if (!description || !amount || amount <= 0) {
-        alert('Por favor, preencha todos os campos corretamente.');
-        return;
-    }
-    
-    // Add expense to current month
-    if (!expenses[currentMonth]) {
-        expenses[currentMonth] = [];
-    }
-    
-    expenses[currentMonth].push({
-        id: nextExpenseId++,
-        category: category,
-        description: description,
-        type: type,
-        amount: amount
-    });
-    
-    // Clear form
-    descriptionInput.value = '';
-    amountInput.value = '';
-    
-    // Update displays
-    updateExpensesCategoriesGrid();
-    updateDashboard();
-    
-    // Auto-save to cloud
-    scheduleAutoSave();
-    
-    alert('Gasto adicionado com sucesso!');
-}
-
-function removeExpense(expenseId) {
-    if (!expenses[currentMonth]) return;
-    
-    const expenseToRemove = expenses[currentMonth].find(expense => expense.id === expenseId);
-    if (!expenseToRemove) return;
-    
-    expenses[currentMonth] = expenses[currentMonth].filter(expense => expense.id !== expenseId);
-    updateExpensesCategoriesGrid();
-    updateDashboard();
-    
-    // Auto-save to cloud
-    scheduleAutoSave();
-    
-    alert('Gasto removido com sucesso!');
-}
-
-function updateExpensesCategoriesGrid() {
-    const gridContainer = document.getElementById('expenses-categories-grid');
-    if (!gridContainer) return;
-    
-    const monthExpenses = getExpensesForMonth();
-    
-    gridContainer.innerHTML = Object.keys(categories).map(catId => {
-        const category = categories[catId];
-        const categoryExpenses = monthExpenses.filter(expense => expense.category === catId);
-        
-        const expensesList = categoryExpenses.length > 0 ? 
-            categoryExpenses.map(expense => `
-                <div class="category-expense-item">
-                    <div class="category-expense-info">
-                        <div class="category-expense-description">${expense.description}</div>
-                        <div class="category-expense-type">${expenseTypeIcons[expense.type]} ${expense.type}</div>
-                    </div>
-                    <div>
-                        <div class="category-expense-amount">${formatCurrency(expense.amount)}</div>
-                        <button class="delete-expense" onclick="removeExpense(${expense.id})">
-                            Remover
-                        </button>
-                    </div>
-                </div>
-            `).join('') : 
-            '<div class="no-expenses">Nenhum gasto registrado</div>';
-        
-        return `
-            <div class="category-expenses-column">
-                <div class="category-expenses-header">
-                    <div class="category-expenses-color" style="background-color: ${category.color}"></div>
-                    <div class="category-expenses-name">${category.name}</div>
-                </div>
-                <div class="category-expenses-list">
-                    ${expensesList}
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-// Configuration Management
-function showFeedbackMessage(message, type = 'success') {
-    const feedbackElement = document.getElementById('feedback-message');
-    if (feedbackElement) {
-        feedbackElement.textContent = message;
-        feedbackElement.className = `feedback-message ${type}`;
-        feedbackElement.classList.remove('hidden');
-        
-        setTimeout(() => {
-            feedbackElement.classList.add('hidden');
-        }, 5000);
-    }
-}
-
-function hideFeedbackMessage() {
-    const feedbackElement = document.getElementById('feedback-message');
-    if (feedbackElement) {
-        feedbackElement.classList.add('hidden');
-    }
-}
-
-function saveConfiguration(name) {
-    if (!name || name.trim() === '') {
-        showFeedbackMessage('Digite um nome para a configuração', 'warning');
-        return false;
-    }
-    
-    const configName = name.trim();
-    savedConfigurations[configName] = {
-        monthlyIncome: monthlyIncome,
-        percentages: { ...percentages }
-    };
-    
-    updateSavedConfigsList();
-    showFeedbackMessage(`Configuração '${configName}' salva com sucesso!`, 'success');
-    
-    const configNameInput = document.getElementById('config-name');
-    if (configNameInput) {
-        configNameInput.value = '';
-    }
-    
-    // Auto-save to cloud
-    scheduleAutoSave();
-    
-    return true;
-}
-
-function loadConfiguration(name) {
-    if (!name || name.trim() === '') {
-        showFeedbackMessage('Digite um nome para a configuração', 'warning');
-        return false;
-    }
-    
-    const configName = name.trim();
-    const config = savedConfigurations[configName];
-    
-    if (!config) {
-        showFeedbackMessage(`Configuração '${configName}' não encontrada`, 'error');
-        return false;
-    }
-    
-    monthlyIncome = config.monthlyIncome || 0;
-    percentages = { ...config.percentages };
-    
-    const incomeInput = document.getElementById('monthly-income');
-    if (incomeInput) {
-        incomeInput.value = monthlyIncome;
-    }
-    
-    Object.keys(percentages).forEach(category => {
-        const slider = document.getElementById(category);
-        if (slider) {
-            slider.value = percentages[category];
-        }
-    });
-    
-    updatePercentageDisplays();
-    updateAmounts();
-    updateTotalPercentage();
-    updateDashboard();
-    
-    showFeedbackMessage(`Configuração '${configName}' carregada!`, 'success');
-    
-    const loadNameInput = document.getElementById('load-name');
-    if (loadNameInput) {
-        loadNameInput.value = '';
-    }
-    
-    // Auto-save to cloud
-    scheduleAutoSave();
-    
-    return true;
-}
-
-function updateSavedConfigsList() {
-    const listElement = document.getElementById('saved-configs-list');
-    if (!listElement) return;
-    
-    const configNames = Object.keys(savedConfigurations);
-    
-    if (configNames.length === 0) {
-        listElement.innerHTML = '<span class="empty-configs">Nenhuma configuração salva</span>';
-        return;
-    }
-    
-    listElement.innerHTML = configNames.map(name => 
-        `<span class="config-tag" onclick="quickLoadConfig('${name}')">${name}</span>`
-    ).join('');
-}
-
-function quickLoadConfig(name) {
-    loadConfiguration(name);
-}
-
+// ===== BUDGET CONFIGURATION =====
 function updateAmounts() {
-    Object.keys(percentages).forEach(category => {
-        const amount = (monthlyIncome * percentages[category]) / 100;
-        const amountElement = document.getElementById(`value-${category}`);
-        if (amountElement) {
-            amountElement.textContent = formatCurrency(amount);
-        }
-    });
+    categorias.forEach(categoria => {
+        const amount = getCategoryBudget(categoria.id);
+        const amountElement = document.getElementById(`amount-${categoria.id}`);
+        if (amountElement) {
+            amountElement.textContent = formatCurrency(amount);
+        }
+    });
 }
 
 function updatePercentageDisplays() {
-    Object.keys(percentages).forEach(category => {
-        const percentageElement = document.getElementById(`percent-${category}`);
-        if (percentageElement) {
-            percentageElement.textContent = formatPercentage(percentages[category]);
-        }
-    });
+    categorias.forEach(categoria => {
+        const percentageElement = document.getElementById(`percentage-${categoria.id}`);
+        if (percentageElement) {
+            percentageElement.textContent = formatPercentage(percentages[categoria.id]);
+        }
+    });
 }
 
 function updateTotalPercentage() {
-    const total = Object.values(percentages).reduce((sum, val) => sum + val, 0);
-    const totalElement = document.getElementById('total-percentage');
-    
-    if (totalElement) {
-        totalElement.textContent = formatPercentage(total);
-        
-        totalElement.classList.remove('over-100', 'under-100');
-        
-        if (Math.abs(total - 100) > 0.1) {
-            if (total > 100) {
-                totalElement.classList.add('over-100');
-            } else {
-                totalElement.classList.add('under-100');
-            }
-        }
-    }
+    const total = Object.values(percentages).reduce((sum, val) => sum + val, 0);
+    const totalElement = document.getElementById('total-percentage');
+    
+    if (totalElement) {
+        totalElement.textContent = formatPercentage(total);
+        
+        totalElement.classList.remove('over-100', 'under-100');
+        
+        if (Math.abs(total - 100) > 0.1) {
+            if (total > 100) {
+                totalElement.classList.add('over-100');
+            } else {
+                totalElement.classList.add('under-100');
+            }
+        }
+    }
+}
+
+function getCategoryBudget(category) {
+    return (monthlyIncome * percentages[category]) / 100;
 }
 
 function handleIncomeInput() {
-    const incomeInput = document.getElementById('monthly-income');
-    if (incomeInput) {
-        let value = incomeInput.value.replace(/[^\d.,]/g, '');
-        value = value.replace(',', '.');
-        monthlyIncome = parseFloat(value) || 0;
-        updateAmounts();
-        updateDashboard();
-        
-        // Auto-save to cloud
-        scheduleAutoSave();
-    }
+    const incomeInput = document.getElementById('monthly-income');
+    if (incomeInput) {
+        let inputValue = incomeInput.value;
+        const parsedValue = parseFloat(inputValue);
+        
+        monthlyIncome = isNaN(parsedValue) ? 0 : parsedValue;
+        
+        updateAmounts();
+        updateDashboard();
+        saveUserConfig();
+    }
 }
 
 function handleSliderChange(category, value) {
-    percentages[category] = parseFloat(value);
-    updatePercentageDisplays();
-    updateAmounts();
-    updateTotalPercentage();
-    updateDashboard();
-    
-    // Auto-save to cloud
-    scheduleAutoSave();
+    percentages[category] = parseFloat(value);
+    updatePercentageDisplays();
+    updateAmounts();
+    updateTotalPercentage();
+    updateDashboard();
+    saveUserConfig();
 }
 
-function setupConfigurationHandlers() {
-    const saveButton = document.getElementById('save-config');
-    if (saveButton) {
-        saveButton.addEventListener('click', () => {
-            const configNameInput = document.getElementById('config-name');
-            if (configNameInput) {
-                saveConfiguration(configNameInput.value);
-            }
-        });
-    }
-    
-    const loadButton = document.getElementById('load-config');
-    if (loadButton) {
-        loadButton.addEventListener('click', () => {
-            const loadNameInput = document.getElementById('load-name');
-            if (loadNameInput) {
-                loadConfiguration(loadNameInput.value);
-            }
-        });
-    }
-    
-    const configNameInput = document.getElementById('config-name');
-    if (configNameInput) {
-        configNameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                saveConfiguration(configNameInput.value);
-            }
-        });
-    }
-    
-    const loadNameInput = document.getElementById('load-name');
-    if (loadNameInput) {
-        loadNameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                loadConfiguration(loadNameInput.value);
-            }
-        });
-    }
-    
-    [configNameInput, loadNameInput].forEach(input => {
-        if (input) {
-            input.addEventListener('input', hideFeedbackMessage);
-        }
-    });
+// ===== EXPENSE MANAGEMENT =====
+function navigateMonth(direction) {
+    if (direction === 'next') {
+        currentMonth++;
+        if (currentMonth > 11) {
+            currentMonth = 0;
+            currentYear++;
+        }
+    } else {
+        currentMonth--;
+        if (currentMonth < 0) {
+            currentMonth = 11;
+            currentYear--;
+        }
+    }
+    
+    updateMonthDisplay();
+    updateExpensesDisplay();
 }
 
-function setupEventHandlers() {
-    console.log('🔧 Configurando event handlers...');
-    
-    // Setup month selector
-    const monthSelect = document.getElementById('month-year');
-    if (monthSelect) {
-        monthSelect.value = currentMonth;
-        monthSelect.addEventListener('change', (e) => {
-            currentMonth = e.target.value;
-            updateDashboard();
-            updateExpensesCategoriesGrid();
-            
-            // Auto-save to cloud
-            scheduleAutoSave();
-        });
-    }
-    
-    // Setup income input
-    const incomeInput = document.getElementById('monthly-income');
-    if (incomeInput) {
-        incomeInput.value = monthlyIncome;
-        incomeInput.addEventListener('input', handleIncomeInput);
-        incomeInput.addEventListener('change', handleIncomeInput);
-        incomeInput.addEventListener('keyup', handleIncomeInput);
-        incomeInput.addEventListener('blur', handleIncomeInput);
-    }
-    
-    // Setup sliders
-    Object.keys(percentages).forEach(category => {
-        const slider = document.getElementById(category);
-        if (slider) {
-            slider.addEventListener('input', function(e) {
-                handleSliderChange(category, e.target.value);
-            });
-            
-            slider.addEventListener('change', function(e) {
-                handleSliderChange(category, e.target.value);
-            });
-            
-            slider.value = percentages[category];
-        }
-    });
-    
-    // Setup expense form
-    const addExpenseBtn = document.getElementById('add-expense');
-    if (addExpenseBtn) {
-        addExpenseBtn.addEventListener('click', addExpense);
-    }
-    
-    // Setup configuration management
-    setupConfigurationHandlers();
-    
-    console.log('✅ Event handlers configurados com sucesso');
+function updateMonthDisplay() {
+    const monthDisplay = document.getElementById('current-month-display');
+    if (monthDisplay) {
+        monthDisplay.textContent = `${getMonthName(currentMonth)} ${currentYear}`;
+    }
 }
 
+async function addExpense(name, amount, category, type, installments = null) {
+    const expense = {
+        id: Date.now() + Math.random(),
+        name: name.trim(),
+        amount: parseFloat(amount),
+        type,
+        installments: installments ? {
+            total: parseInt(installments),
+            current: 1
+        } : null,
+        createdAt: new Date().toISOString()
+    };
+    
+    // Add to current month
+    addExpenseToMonth(expense, currentMonth, currentYear, category);
+    
+    // Save to Supabase
+    await saveExpenseToSupabase(expense, category, currentMonth, currentYear);
+    
+    // Handle different expense types
+    if (type === 'fixa') {
+        // Apply to next 11 months
+        for (let i = 1; i <= 11; i++) {
+            const futureMonth = (currentMonth + i) % 12;
+            const futureYear = currentYear + Math.floor((currentMonth + i) / 12);
+            
+            const futureExpense = {
+                ...expense,
+                id: expense.id + i,
+                isFixed: true,
+                originalId: expense.id
+            };
+            
+            addExpenseToMonth(futureExpense, futureMonth, futureYear, category);
+            await saveExpenseToSupabase(futureExpense, category, futureMonth, futureYear);
+        }
+    } else if (type === 'parcelada' && installments) {
+        // Add installments to future months
+        for (let i = 1; i < installments; i++) {
+            const futureMonth = (currentMonth + i) % 12;
+            const futureYear = currentYear + Math.floor((currentMonth + i) / 12);
+            
+            const installmentExpense = {
+                ...expense,
+                id: expense.id + i,
+                installments: {
+                    total: parseInt(installments),
+                    current: i + 1
+                },
+                originalId: expense.id
+            };
+            
+            addExpenseToMonth(installmentExpense, futureMonth, futureYear, category);
+            await saveExpenseToSupabase(installmentExpense, category, futureMonth, futureYear);
+        }
+    }
+    
+    updateExpensesDisplay();
+    updateDashboard();
+}
+
+function addExpenseToMonth(expense, month, year, categoryId) {
+    if (!gastosPorMes[year]) {
+        gastosPorMes[year] = {};
+    }
+    if (!gastosPorMes[year][month]) {
+        gastosPorMes[year][month] = {};
+    }
+    if (!gastosPorMes[year][month][categoryId]) {
+        gastosPorMes[year][month][categoryId] = [];
+    }
+    
+    gastosPorMes[year][month][categoryId].push(expense);
+}
+
+async function removeExpense(category, expenseId) {
+    const removed = removeExpenseFromMonth(category, expenseId, currentMonth, currentYear);
+    
+    if (removed) {
+        await removeExpenseFromSupabase(expenseId);
+        
+        const expense = removed;
+        
+        // Handle different expense types for removal
+        if (expense.type === 'fixa' || expense.type === 'parcelada') {
+            // Remove from all months
+            Object.keys(gastosPorMes).forEach(year => {
+                Object.keys(gastosPorMes[year]).forEach(month => {
+                    if (gastosPorMes[year][month][category]) {
+                        gastosPorMes[year][month][category] = gastosPorMes[year][month][category].filter(exp => 
+                            exp.originalId !== expense.id && exp.id !== expense.id
+                        );
+                    }
+                });
+            });
+        }
+        
+        updateExpensesDisplay();
+        updateDashboard();
+    }
+}
+
+function removeExpenseFromMonth(category, expenseId, month, year) {
+    if (gastosPorMes[year] && gastosPorMes[year][month] && gastosPorMes[year][month][category]) {
+        const index = gastosPorMes[year][month][category].findIndex(exp => exp.id === expenseId);
+        
+        if (index !== -1) {
+            return gastosPorMes[year][month][category].splice(index, 1)[0];
+        }
+    }
+    
+    return null;
+}
+
+function getExpensesForMonth(month, year) {
+    return (gastosPorMes[year] && gastosPorMes[year][month]) || {};
+}
+
+function getCategoryTotal(category, month, year) {
+    const monthExpenses = getExpensesForMonth(month, year);
+    const categoryExpenses = monthExpenses[category] || [];
+    return categoryExpenses.reduce((total, expense) => total + expense.amount, 0);
+}
+
+function getTotalGastoMes(month, year) {
+    let total = 0;
+    categorias.forEach(categoria => {
+        total += getCategoryTotal(categoria.id, month, year);
+    });
+    return total;
+}
+
+// ===== EXPENSES DISPLAY =====
+function updateExpensesDisplay() {
+    const expensesGrid = document.getElementById('expenses-grid');
+    if (!expensesGrid) return;
+    
+    expensesGrid.innerHTML = '';
+    
+    categorias.forEach(categoria => {
+        const monthExpenses = getExpensesForMonth(currentMonth, currentYear);
+        const categoryExpenses = monthExpenses[categoria.id] || [];
+        const categoryTotal = getCategoryTotal(categoria.id, currentMonth, currentYear);
+        const categoryBudget = getCategoryBudget(categoria.id);
+        const balance = categoryBudget - categoryTotal;
+        
+        const columnDiv = document.createElement('div');
+        columnDiv.className = 'category-column';
+        columnDiv.style.setProperty('--category-color', categoria.cor);
+        
+        // Header
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'category-column-header';
+        
+        const headerTitle = document.createElement('h4');
+        headerTitle.textContent = categoria.nome;
+        headerDiv.appendChild(headerTitle);
+        
+        const budgetInfo = document.createElement('div');
+        budgetInfo.className = 'category-budget-info';
+        budgetInfo.textContent = `Orçamento: ${formatCurrency(categoryBudget)}`;
+        headerDiv.appendChild(budgetInfo);
+        
+        columnDiv.appendChild(headerDiv);
+        
+        // Body
+        const bodyDiv = document.createElement('div');
+        bodyDiv.className = 'category-column-body';
+        
+        if (categoryExpenses.length === 0) {
+            const emptyDiv = document.createElement('div');
+            emptyDiv.className = 'empty-category';
+            emptyDiv.textContent = 'Nenhum gasto nesta categoria';
+            bodyDiv.appendChild(emptyDiv);
+        } else {
+            const expensesList = document.createElement('ul');
+            expensesList.className = 'expenses-list';
+            
+            categoryExpenses.forEach(expense => {
+                const listItem = document.createElement('li');
+                listItem.className = 'expense-item';
+                
+                const expenseInfo = document.createElement('div');
+                expenseInfo.className = 'expense-info';
+                
+                const expenseName = document.createElement('div');
+                expenseName.className = 'expense-name';
+                expenseName.innerHTML = `${expenseTypeIcons[expense.type]} ${expense.name}`;
+                expenseInfo.appendChild(expenseName);
+                
+                // Add details for installments and fixed expenses
+                if (expense.installments) {
+                    const expenseDetails = document.createElement('div');
+                    expenseDetails.className = 'expense-details';
+                    expenseDetails.textContent = `Parcela ${expense.installments.current}/${expense.installments.total}`;
+                    expenseInfo.appendChild(expenseDetails);
+                } else if (expense.type === 'fixa' || expense.isFixed) {
+                    const expenseDetails = document.createElement('div');
+                    expenseDetails.className = 'expense-details';
+                    expenseDetails.textContent = 'Despesa fixa mensal';
+                    expenseInfo.appendChild(expenseDetails);
+                }
+                
+                listItem.appendChild(expenseInfo);
+                
+                const expenseAmount = document.createElement('div');
+                expenseAmount.className = 'expense-amount';
+                expenseAmount.textContent = formatCurrency(expense.amount);
+                listItem.appendChild(expenseAmount);
+                
+                const removeButton = document.createElement('button');
+                removeButton.className = 'expense-remove';
+                removeButton.innerHTML = '🗑️';
+                removeButton.title = 'Remover gasto';
+                removeButton.onclick = () => removeExpense(categoria.id, expense.id);
+                listItem.appendChild(removeButton);
+                
+                expensesList.appendChild(listItem);
+            });
+            
+            bodyDiv.appendChild(expensesList);
+        }
+        
+        columnDiv.appendChild(bodyDiv);
+        
+        // Footer
+        const footerDiv = document.createElement('div');
+        footerDiv.className = 'category-column-footer';
+        
+        const totalsDiv = document.createElement('div');
+        totalsDiv.className = 'category-totals';
+        
+        const totalDiv = document.createElement('div');
+        totalDiv.className = 'category-total';
+        totalDiv.innerHTML = `<span>Total Gasto:</span><span>${formatCurrency(categoryTotal)}</span>`;
+        totalsDiv.appendChild(totalDiv);
+        
+        const balanceDiv = document.createElement('div');
+        balanceDiv.className = `category-balance ${balance >= 0 ? 'positive' : 'negative'}`;
+        balanceDiv.innerHTML = `<span>Saldo:</span><span>${formatCurrency(Math.abs(balance))}</span>`;
+        totalsDiv.appendChild(balanceDiv);
+        
+        footerDiv.appendChild(totalsDiv);
+        columnDiv.appendChild(footerDiv);
+        
+        expensesGrid.appendChild(columnDiv);
+    });
+}
+
+// ===== FORM HANDLING =====
+function handleExpenseForm(e) {
+    e.preventDefault();
+    
+    const name = document.getElementById('expense-name').value.trim();
+    const amount = document.getElementById('expense-amount').value;
+    const category = document.getElementById('expense-category').value;
+    const typeRadio = document.querySelector('input[name="expense-type"]:checked');
+    const type = typeRadio ? typeRadio.value : null;
+    const installments = document.getElementById('expense-installments').value;
+    
+    if (!name || !amount || !category || !type) {
+        alert('Por favor, preencha todos os campos obrigatórios.');
+        return;
+    }
+    
+    if (type === 'parcelada' && (!installments || installments < 2 || installments > 24)) {
+        alert('Para despesas parceladas, informe o número de parcelas entre 2 e 24.');
+        return;
+    }
+    
+    addExpense(name, amount, category, type, type === 'parcelada' ? installments : null);
+    
+    // Reset form
+    e.target.reset();
+    const installmentsGroup = document.getElementById('installments-group');
+    if (installmentsGroup) {
+        installmentsGroup.style.display = 'none';
+    }
+}
+
+function handleLoginForm(e) {
+    e.preventDefault();
+    
+    const username = document.getElementById('username-input').value.trim();
+    
+    if (!username) {
+        alert('Por favor, digite um nome de usuário.');
+        return;
+    }
+    
+    handleLogin(username);
+}
+
+// ===== UPDATE ALL DISPLAYS =====
 function updateAllDisplays() {
-    console.log('🔄 Atualizando todos os displays...');
-    updatePercentageDisplays();
-    updateAmounts();
-    updateTotalPercentage();
-    updateExpensesCategoriesGrid();
-    updateDashboard();
-    updateSavedConfigsList();
-    console.log('✅ Todos os displays atualizados');
+    // Update income input
+    const incomeInput = document.getElementById('monthly-income');
+    if (incomeInput) {
+        incomeInput.value = monthlyIncome;
+    }
+    
+    // Update sliders
+    categorias.forEach(categoria => {
+        const slider = document.getElementById(`slider-${categoria.id}`);
+        if (slider) {
+            slider.value = percentages[categoria.id];
+        }
+    });
+    
+    // Update displays
+    updatePercentageDisplays();
+    updateAmounts();
+    updateTotalPercentage();
+    updateMonthDisplay();
+    updateExpensesDisplay();
+    updateDashboard();
 }
 
-// Make functions available globally
-window.quickLoadConfig = quickLoadConfig;
-window.removeExpense = removeExpense;
+// ===== SETUP FUNCTIONS =====
+function setupTabs() {
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    
+    tabButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const tabName = this.getAttribute('data-tab');
+            switchTab(tabName);
+        });
+    });
+}
 
-// MAIN INITIALIZATION
-document.addEventListener('DOMContentLoaded', async function() {
-    console.log('🚀 DOM loaded, initializing app...');
-    
-    // Initialize Supabase
-    const supabaseInitialized = await initializeSupabase();
-    
-    if (supabaseInitialized) {
-        // Setup login handlers
-        setupLoginHandlers();
-        
-        // Setup tabs and other handlers for when user logs in
-        initializeTabs();
-        setupEventHandlers();
-        
-        // Show login screen initially
-        showLoginScreen();
-        
-        console.log('🎉 App initialized successfully - waiting for login');
-    } else {
-        // If Supabase fails, show error message
-        showLoginMessage('Erro de conexão com o servidor. Tente novamente mais tarde.', 'error');
-    }
-});
+function setupThemeToggle() {
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+        themeToggle.addEventListener('click', toggleTheme);
+    }
+}
+
+function setupDashboardNavigation() {
+    const prevBtn = document.getElementById('dashboard-prev-month');
+    const nextBtn = document.getElementById('dashboard-next-month');
+    
+    if (prevBtn) {
+        prevBtn.addEventListener('click', () => navigateDashboardMonth('prev'));
+    }
+    
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => navigateDashboardMonth('next'));
+    }
+}
+
+function setupMonthNavigation() {
+    const prevBtn = document.getElementById('prev-month');
+    const nextBtn = document.getElementById('next-month');
+    
+    if (prevBtn) {
+        prevBtn.addEventListener('click', () => navigateMonth('prev'));
+    }
+    
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => navigateMonth('next'));
+    }
+}
+
+function setupExpenseForm() {
+    const form = document.getElementById('expense-form');
+    const typeRadios = document.querySelectorAll('input[name="expense-type"]');
+    const installmentsGroup = document.getElementById('installments-group');
+    
+    if (form) {
+        form.addEventListener('submit', handleExpenseForm);
+    }
+    
+    typeRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (installmentsGroup) {
+                installmentsGroup.style.display = this.value === 'parcelada' ? 'block' : 'none';
+            }
+        });
+    });
+}
+
+function setupLoginForm() {
+    const form = document.getElementById('login-form');
+    if (form) {
+        form.addEventListener('submit', handleLoginForm);
+    }
+}
+
+function setupConfigControls() {
+    // Income input
+    const incomeInput = document.getElementById('monthly-income');
+    if (incomeInput) {
+        incomeInput.addEventListener('input', handleIncomeInput);
+        incomeInput.addEventListener('change', handleIncomeInput);
+        incomeInput.addEventListener('blur', handleIncomeInput);
+    }
+    
+    // Sliders
+    categorias.forEach(categoria => {
+        const slider = document.getElementById(`slider-${categoria.id}`);
+        if (slider) {
+            ['input', 'change'].forEach(eventType => {
+                slider.addEventListener(eventType, function(e) {
+                    handleSliderChange(categoria.id, e.target.value);
+                });
+            });
+        }
+    });
+}
+
+// ===== INITIALIZE APPLICATION =====
+function initApp() {
+    console.log('Inicializando aplicativo de orçamento...');
+    
+    // Initialize theme
+    initTheme();
+    
+    // Setup all components
+    setupTabs();
+    setupThemeToggle();
+    setupDashboardNavigation();
+    setupMonthNavigation();
+    setupExpenseForm();
+    setupLoginForm();
+    setupConfigControls();
+    
+    // Check user login and load data
+    checkUserLogin();
+    
+    console.log('Aplicativo inicializado com sucesso');
+}
+
+// Wait for DOM to be ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
+
+// Save data periodically
+setInterval(() => {
+    if (currentUser) {
+        saveUserConfig();
+    }
+}, 30000); // Save every 30 seconds
