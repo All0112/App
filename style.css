@@ -927,8 +927,8 @@ select.form-control {
 
 .tab-content {
     display: none;
-    opacity: 0;
-    transition: opacity 0.3s ease;
+    /*opacity: 0;*/
+    /*transition: opacity 0.3s ease;*/
 }
 
 .tab-content.active {
