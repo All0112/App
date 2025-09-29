@@ -277,20 +277,25 @@ function showLoginScreen() {
     document.getElementById('main-app').classList.add('hidden');
 }
 
-// CÓDIGO CORRIGIDO
 function showMainApp() {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('main-app').classList.remove('hidden');
-    
-    // Update UI with current user
+
     const usernameEl = document.getElementById('current-username');
     if (usernameEl) {
         usernameEl.textContent = currentUser;
     }
-    
-    // Pede ao navegador para rodar a atualização no momento certo
+
+    // Usamos requestAnimationFrame para garantir que o elemento está visível
     requestAnimationFrame(() => {
-        updateAllDisplays();
+        // Forçamos o navegador a calcular o layout lendo uma propriedade de dimensão
+        const mainApp = document.getElementById('main-app');
+        if (mainApp) mainApp.offsetHeight; // Esta linha força o reflow
+
+        // Agora, atualizamos os displays no próximo quadro, com o layout já calculado
+        requestAnimationFrame(() => {
+            updateAllDisplays();
+        });
     });
 }
 
@@ -450,15 +455,21 @@ function initializeTabs() {
     console.log('✅ Sistema de abas inicializado com sucesso');
 }
 
-// CÓDIGO CORRIGIDO
 function updateTabContent(targetTab) {
     console.log('🔄 Atualizando conteúdo da aba:', targetTab);
-    
-    switch(targetTab) {
+
+    // Usamos um truque para forçar o navegador a recalcular o layout da aba
+    const contentEl = document.getElementById(`tab-${targetTab}`);
+    if (contentEl) {
+        // Ler a propriedade 'offsetHeight' força o navegador a processar
+        // qualquer mudança de CSS pendente (como o 'display: block').
+        contentEl.offsetHeight;
+    }
+
+    switch (targetTab) {
         case 'dashboard':
-            requestAnimationFrame(() => {
-                updateDashboard();
-            });
+            // Agora que o layout está garantido, podemos chamar a atualização
+            updateDashboard();
             break;
         case 'configurar':
             updatePercentageDisplays();
@@ -466,9 +477,8 @@ function updateTabContent(targetTab) {
             updateTotalPercentage();
             break;
         case 'gastos':
-            requestAnimationFrame(() => {
-                updateExpensesCategoriesGrid();
-            });
+            // O mesmo para a aba de gastos
+            updateExpensesCategoriesGrid();
             break;
     }
 }
