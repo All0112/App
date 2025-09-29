@@ -278,25 +278,17 @@ function showLoginScreen() {
 }
 
 function showMainApp() {
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('main-app').classList.remove('hidden');
-
-    const usernameEl = document.getElementById('current-username');
-    if (usernameEl) {
-        usernameEl.textContent = currentUser;
-    }
-
-    // Usamos requestAnimationFrame para garantir que o elemento está visível
-    requestAnimationFrame(() => {
-        // Forçamos o navegador a calcular o layout lendo uma propriedade de dimensão
-        const mainApp = document.getElementById('main-app');
-        if (mainApp) mainApp.offsetHeight; // Esta linha força o reflow
-
-        // Agora, atualizamos os displays no próximo quadro, com o layout já calculado
-        requestAnimationFrame(() => {
-            updateAllDisplays();
-        });
-    });
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('main-app').classList.remove('hidden');
+    
+    // Update UI with current user
+    const usernameEl = document.getElementById('current-username');
+    if (usernameEl) {
+        usernameEl.textContent = currentUser;
+    }
+    
+    // Update all displays
+    updateAllDisplays();
 }
 
 function showLoginMessage(message, type = 'info') {
@@ -456,31 +448,23 @@ function initializeTabs() {
 }
 
 function updateTabContent(targetTab) {
-    console.log('🔄 Atualizando conteúdo da aba:', targetTab);
-
-    // Usamos um truque para forçar o navegador a recalcular o layout da aba
-    const contentEl = document.getElementById(`tab-${targetTab}`);
-    if (contentEl) {
-        // Ler a propriedade 'offsetHeight' força o navegador a processar
-        // qualquer mudança de CSS pendente (como o 'display: block').
-        contentEl.offsetHeight;
-    }
-
-    switch (targetTab) {
-        case 'dashboard':
-            // Agora que o layout está garantido, podemos chamar a atualização
-            updateDashboard();
-            break;
-        case 'configurar':
-            updatePercentageDisplays();
-            updateAmounts();
-            updateTotalPercentage();
-            break;
-        case 'gastos':
-            // O mesmo para a aba de gastos
-            updateExpensesCategoriesGrid();
-            break;
-    }
+    console.log('🔄 Atualizando conteúdo da aba:', targetTab);
+    
+    switch(targetTab) {
+        case 'dashboard':
+            setTimeout(() => {
+                updateDashboard();
+            }, 100);
+            break;
+        case 'configurar':
+            updatePercentageDisplays();
+            updateAmounts();
+            updateTotalPercentage();
+            break;
+        case 'gastos':
+            updateExpensesCategoriesGrid();
+            break;
+    }
 }
 
 // Dashboard Functions
