@@ -252,7 +252,7 @@ async function saveUserConfig() {
         
         const { error } = await supabase
             .from('configuracoes')
-            .upsert(configData);
+            .upsert(configData, { onConflict: 'username' }); // <-- Adicione esta parte
         
         if (error) throw error;
         
