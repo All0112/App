@@ -1,19 +1,8 @@
-// ===== SUPABASE CONFIGURATION =====
-// IMPORTANT: Replace these placeholders with your actual Supabase credentials
-const SUPABASE_URL = 'https://iballqwxsxkpltyustgj.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYWxscXd4c3hrcGx0eXVzdGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwNTc2MzAsImV4cCI6MjA3NDYzMzYzMH0.Z4WKcwVS5FFfbtaaiyBI0p348_v00pOYDYTq_6bDgGE';
+// ===== CONFIGURAÇÃO DA API GOOGLE SHEETS =====
+// Substitua a URL abaixo pela URL do seu Web App (Apps Script)
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyf-_QLBDakKcyWUTboKf4BlB12i0-VgHq2XVBBRTQ3DAQJr9klkAsGYbFg1pn33iAfQg/exec';
 
-// Initialize Supabase client
-let supabase = null;
-
-// Try to initialize Supabase - will fail with placeholder values
-try {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-} catch (error) {
-    console.warn('Supabase não configurado. Use valores reais para SUPABASE_URL e SUPABASE_KEY');
-}
-
-// ===== GLOBAL VARIABLES =====
+// ===== VARIÁVEIS GLOBAIS =====
 let currentUser = null;
 let monthlyIncome = 0;
 let percentages = {
@@ -25,18 +14,18 @@ let percentages = {
     'conhecimento': 16.67
 };
 
-// Current month/year for expense tracking
-let currentMonth = 9; // October (0-based)
+// Mês/Ano atual para controle de gastos
+let currentMonth = 9; // Outubro (0-based: Janeiro é 0)
 let currentYear = 2025;
 
-// Dashboard month/year (can be different from expenses)
+// Mês/Ano do Dashboard (pode ser diferente dos gastos)
 let dashboardMonth = 9;
 let dashboardYear = 2025;
 
-// Expense storage
-let gastosPorMes = {}; // {year: {month: {category: [expenses]}}}
+// Armazenamento de gastos
+let gastosPorMes = {}; // {ano: {mes: {categoria: [gastos]}}}
 
-// Category configuration
+// Configuração das categorias
 const categorias = [
     {id: "custos-fixos", nome: "🏠 Custos fixos", emoji: "🏠", cor: "#1FB8CD"},
     {id: "conforto", nome: "🛋️ Conforto", emoji: "🛋️", cor: "#FFC185"},
@@ -46,17 +35,17 @@ const categorias = [
     {id: "conhecimento", nome: "📚 Conhecimento", emoji: "📚", cor: "#DB4545"}
 ];
 
-// Expense type icons
+// Ícones dos tipos de despesa
 const expenseTypeIcons = {
     'unica': '🛒',
     'fixa': '📅',
     'parcelada': '💳'
 };
 
-// Chart instance
+// Instância do gráfico
 let expenseChart = null;
 
-// ===== UTILITY FUNCTIONS =====
+// ===== FUNÇÕES UTILITÁRIAS =====
 function formatCurrency(amount) {
     if (isNaN(amount) || amount === 0) {
         return 'R$ 0,00';
@@ -88,7 +77,7 @@ function getMonthName(monthIndex) {
     return months[monthIndex];
 }
 
-// ===== THEME MANAGEMENT =====
+// ===== GERENCIAMENTO DE TEMA =====
 function initTheme() {
     const savedTheme = localStorage.getItem('budget-app-theme') || 'light';
     applyTheme(savedTheme);
@@ -120,7 +109,35 @@ function updateThemeIcon(theme) {
     }
 }
 
-// ===== USER AUTHENTICATION =====
+// ===== AUTENTICAÇÃO E DADOS (AGORA COM GOOGLE SHEETS) =====
+
+// Função principal para chamar o Google Apps Script
+async function callGoogleAPI(action, data = {}) {
+    // Verifica se o usuário configurou a URL
+    if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes('COLE_SUA_URL')) {
+        console.warn('URL da API Google não configurada no app.js');
+        return null;
+    }
+
+    const payload = JSON.stringify({
+        action: action,
+        data: data
+    });
+
+    try {
+        const response = await fetch(GOOGLE_SCRIPT_URL, {
+            method: 'POST',
+            body: payload
+        });
+        
+        const result = await response.json();
+        return result;
+    } catch (error) {
+        console.error("Erro na comunicação com Google Sheets:", error);
+        return { status: 'error', message: error.toString() };
+    }
+}
+
 function showLoginModal() {
     const modal = document.getElementById('login-modal');
     if (modal) {
@@ -139,19 +156,13 @@ async function handleLogin(username) {
     try {
         currentUser = username.trim();
         
-        // Save to localStorage
+        // Salvar no localStorage para lembrar depois
         localStorage.setItem('budget-app-username', currentUser);
         
-        // Create or get user profile in Supabase if available
-        if (supabase) {
-            await createUserProfile(currentUser);
-            await loadUserData();
-        } else {
-            // Load from localStorage if Supabase not available
-            loadLocalData();
-        }
+        // Carregar dados da nuvem (Google Sheets)
+        await loadUserData();
         
-        // Update UI
+        // Atualizar UI
         updateUserWelcome();
         hideLoginModal();
         updateAllDisplays();
@@ -159,30 +170,6 @@ async function handleLogin(username) {
     } catch (error) {
         console.error('Erro no login:', error);
         alert('Erro ao fazer login. Tente novamente.');
-    }
-}
-
-async function createUserProfile(username) {
-    if (!supabase) return;
-    
-    try {
-        // Check if user already exists
-        const { data: existingUser } = await supabase
-            .from('perfis')
-            .select('username')
-            .eq('username', username)
-            .single();
-        
-        if (!existingUser) {
-            // Create new user
-            const { error } = await supabase
-                .from('perfis')
-                .insert([{ username: username }]);
-            
-            if (error) throw error;
-        }
-    } catch (error) {
-        console.error('Erro ao criar perfil:', error);
     }
 }
 
@@ -200,11 +187,8 @@ function checkUserLogin() {
         currentUser = savedUser;
         updateUserWelcome();
         
-        if (supabase) {
-            loadUserData();
-        } else {
-            loadLocalData();
-        }
+        // Tenta carregar da nuvem, se falhar ou demorar, carrega local
+        loadUserData(); 
         
         updateAllDisplays();
     } else {
@@ -212,37 +196,81 @@ function checkUserLogin() {
     }
 }
 
-// ===== SUPABASE DATA FUNCTIONS =====
+// ===== CARREGAMENTO E SALVAMENTO DE DADOS =====
+
 async function loadUserData() {
-    if (!supabase || !currentUser) return;
+    if (!currentUser) return;
     
+    // Feedback visual (cursor de espera)
+    document.body.style.cursor = 'wait';
+    console.log('Buscando dados no Google Sheets...');
+
     try {
-        // Load configurations
-        const { data: config } = await supabase
-            .from('configuracoes')
-            .select('*')
-            .eq('username', currentUser)
-            .single();
+        const result = await callGoogleAPI('read_data', { username: currentUser });
         
-        if (config) {
-            monthlyIncome = config.renda || 0;
-            percentages = config.percentages || percentages;
+        if (result && result.status === 'success') {
+            console.log('Dados recebidos com sucesso!');
+
+            // 1. Carregar Configurações (Renda e Porcentagens)
+            if (result.config) {
+                monthlyIncome = Number(result.config.renda) || 0;
+                if (result.config.percentages) {
+                    // Mescla com as porcentagens padrão para garantir que todas existam
+                    percentages = { ...percentages, ...result.config.percentages };
+                }
+            }
+
+            // 2. Carregar Gastos e formatar para o App
+            gastosPorMes = {}; // Limpa dados locais
+            
+            if (result.expenses && Array.isArray(result.expenses)) {
+                result.expenses.forEach(expense => {
+                    const year = expense.ano;
+                    const month = expense.mes;
+                    const category = expense.categoria;
+                    
+                    // Cria estrutura de objetos se não existir
+                    if (!gastosPorMes[year]) gastosPorMes[year] = {};
+                    if (!gastosPorMes[year][month]) gastosPorMes[year][month] = {};
+                    if (!gastosPorMes[year][month][category]) gastosPorMes[year][month][category] = [];
+                    
+                    // Transforma do formato da planilha para o formato do App
+                    const expenseObj = {
+                        id: expense.id,
+                        name: expense.item, // Na planilha é 'item', no app é 'name'
+                        amount: Number(expense.valor), // Na planilha é 'valor', no app é 'amount'
+                        type: expense.tipo,
+                        installments: expense.totalParcelas > 1 ? {
+                            current: expense.parcelaAtual,
+                            total: expense.totalParcelas
+                        } : null,
+                        createdAt: expense.created_at
+                    };
+                    
+                    gastosPorMes[year][month][category].push(expenseObj);
+                });
+            }
+            
+            updateAllDisplays();
+        } else {
+            console.warn('Falha ao buscar dados ou usuário novo. Usando dados locais.');
+            loadLocalData();
         }
-        
-        // Load expenses for current month
-        await loadExpensesFromSupabase();
-        
     } catch (error) {
         console.error('Erro ao carregar dados:', error);
+        loadLocalData(); // Fallback
+    } finally {
+        document.body.style.cursor = 'default';
     }
 }
 
 async function saveUserConfig() {
-    if (!supabase || !currentUser) {
-        saveLocalData();
-        return;
-    }
+    // Salva localmente primeiro (para resposta rápida)
+    saveLocalData();
+
+    if (!currentUser) return;
     
+    // Salva na nuvem em segundo plano
     try {
         const configData = {
             username: currentUser,
@@ -250,23 +278,20 @@ async function saveUserConfig() {
             percentages: percentages
         };
         
-        const { error } = await supabase
-            .from('configuracoes')
-            .upsert(configData, { onConflict: 'username' }); // <-- Adicione esta parte
-        
-        if (error) throw error;
+        await callGoogleAPI('save_config', configData);
         
     } catch (error) {
-        console.error('Erro ao salvar configuração:', error);
-        saveLocalData(); // Fallback to localStorage
+        console.error('Erro ao salvar configuração na nuvem:', error);
     }
 }
 
-async function saveExpenseToSupabase(expense, category, month, year) {
-    if (!supabase || !currentUser) return;
+async function saveExpenseToCloud(expense, category, month, year) {
+    if (!currentUser) return;
     
     try {
+        // Prepara objeto igual aos cabeçalhos da planilha
         const expenseData = {
+            id: expense.id,
             username: currentUser,
             ano: year,
             mes: month,
@@ -279,77 +304,24 @@ async function saveExpenseToSupabase(expense, category, month, year) {
             created_at: new Date().toISOString()
         };
         
-        const { error } = await supabase
-            .from('gastos')
-            .insert([expenseData]);
-        
-        if (error) throw error;
+        await callGoogleAPI('add_expense', expenseData);
         
     } catch (error) {
-        console.error('Erro ao salvar gasto:', error);
+        console.error('Erro ao salvar gasto na nuvem:', error);
     }
 }
 
-async function loadExpensesFromSupabase() {
-    if (!supabase || !currentUser) return;
+async function removeExpenseFromCloud(expenseId) {
+    if (!currentUser) return;
     
     try {
-        const { data: expenses, error } = await supabase
-            .from('gastos')
-            .select('*')
-            .eq('username', currentUser);
-        
-        if (error) throw error;
-        
-        // Organize expenses by year/month/category
-        gastosPorMes = {};
-        
-        expenses.forEach(expense => {
-            const year = expense.ano;
-            const month = expense.mes;
-            const category = expense.categoria;
-            
-            if (!gastosPorMes[year]) gastosPorMes[year] = {};
-            if (!gastosPorMes[year][month]) gastosPorMes[year][month] = {};
-            if (!gastosPorMes[year][month][category]) gastosPorMes[year][month][category] = [];
-            
-            const expenseObj = {
-                id: expense.id,
-                name: expense.item,
-                amount: expense.valor,
-                type: expense.tipo,
-                installments: expense.totalParcelas > 1 ? {
-                    current: expense.parcelaAtual,
-                    total: expense.totalParcelas
-                } : null,
-                createdAt: expense.created_at
-            };
-            
-            gastosPorMes[year][month][category].push(expenseObj);
-        });
-        
+        await callGoogleAPI('delete_expense', { id: expenseId });
     } catch (error) {
-        console.error('Erro ao carregar gastos:', error);
+        console.error('Erro ao remover gasto da nuvem:', error);
     }
 }
 
-async function removeExpenseFromSupabase(expenseId) {
-    if (!supabase) return;
-    
-    try {
-        const { error } = await supabase
-            .from('gastos')
-            .delete()
-            .eq('id', expenseId);
-        
-        if (error) throw error;
-        
-    } catch (error) {
-        console.error('Erro ao remover gasto:', error);
-    }
-}
-
-// ===== LOCAL STORAGE FALLBACK =====
+// ===== LOCAL STORAGE (BACKUP) =====
 function saveLocalData() {
     const data = {
         monthlyIncome,
@@ -387,26 +359,26 @@ function loadLocalData() {
     }
 }
 
-// ===== TAB MANAGEMENT =====
+// ===== GERENCIAMENTO DE ABAS =====
 function switchTab(tabName) {
-    // Hide all tab contents
+    // Esconde todas as abas
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
     });
     
-    // Remove active class from all tab buttons
+    // Remove classe ativa dos botões
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
     });
     
-    // Show selected tab content and activate button
+    // Mostra aba selecionada
     const targetTab = document.getElementById(tabName);
     const targetBtn = document.querySelector(`[data-tab="${tabName}"]`);
     
     if (targetTab) targetTab.classList.add('active');
     if (targetBtn) targetBtn.classList.add('active');
     
-    // Update displays based on active tab
+    // Atualiza displays baseados na aba
     if (tabName === 'dashboard') {
         updateDashboard();
     } else if (tabName === 'gastos') {
@@ -414,7 +386,7 @@ function switchTab(tabName) {
     }
 }
 
-// ===== DASHBOARD FUNCTIONS =====
+// ===== FUNÇÕES DO DASHBOARD =====
 function updateDashboard() {
     updateDashboardMonthDisplay();
     updateSummaryCards();
@@ -469,7 +441,7 @@ function updateChart() {
     
     const ctx = canvas.getContext('2d');
     
-    // Destroy existing chart
+    // Destrói gráfico existente
     if (expenseChart) {
         expenseChart.destroy();
     }
@@ -528,7 +500,7 @@ function getChartData() {
         }
     });
     
-    // Se não há gastos, mostrar categorias com budget
+    // Se não há gastos, mostrar categorias com budget para o gráfico não ficar vazio
     if (values.length === 0 && monthlyIncome > 0) {
         categorias.forEach(categoria => {
             const budget = getCategoryBudget(categoria.id);
@@ -589,7 +561,7 @@ function getStatusText(percentage) {
     return '🚨 Limite';
 }
 
-// ===== BUDGET CONFIGURATION =====
+// ===== CONFIGURAÇÃO DE ORÇAMENTO =====
 function updateAmounts() {
     categorias.forEach(categoria => {
         const amount = getCategoryBudget(categoria.id);
@@ -655,7 +627,7 @@ function handleSliderChange(category, value) {
     saveUserConfig();
 }
 
-// ===== EXPENSE MANAGEMENT =====
+// ===== GERENCIAMENTO DE GASTOS =====
 function navigateMonth(direction) {
     if (direction === 'next') {
         currentMonth++;
@@ -684,7 +656,7 @@ function updateMonthDisplay() {
 
 async function addExpense(name, amount, category, type, installments = null) {
     const expense = {
-        id: Date.now() + Math.random(),
+        id: Date.now() + Math.random(), // ID único
         name: name.trim(),
         amount: parseFloat(amount),
         type,
@@ -695,31 +667,35 @@ async function addExpense(name, amount, category, type, installments = null) {
         createdAt: new Date().toISOString()
     };
     
-    // Add to current month
+    // Adiciona ao mês atual localmente (para visualização imediata)
     addExpenseToMonth(expense, currentMonth, currentYear, category);
     
-    // Save to Supabase
-    await saveExpenseToSupabase(expense, category, currentMonth, currentYear);
+    // Salva na nuvem (Planilha Google)
+    await saveExpenseToCloud(expense, category, currentMonth, currentYear);
     
-    // Handle different expense types
+    // Salva backup local
+    saveLocalData();
+    
+    // Lógica para despesas fixas e parceladas
     if (type === 'fixa') {
-        // Apply to next 11 months
+        // Replica para os próximos 11 meses
         for (let i = 1; i <= 11; i++) {
             const futureMonth = (currentMonth + i) % 12;
             const futureYear = currentYear + Math.floor((currentMonth + i) / 12);
             
             const futureExpense = {
                 ...expense,
-                id: expense.id + i,
+                id: expense.id + i, // Novo ID
                 isFixed: true,
                 originalId: expense.id
             };
             
             addExpenseToMonth(futureExpense, futureMonth, futureYear, category);
-            await saveExpenseToSupabase(futureExpense, category, futureMonth, futureYear);
+            // Salva futuro na nuvem (background, sem await para não travar UI)
+            saveExpenseToCloud(futureExpense, category, futureMonth, futureYear);
         }
     } else if (type === 'parcelada' && installments) {
-        // Add installments to future months
+        // Adiciona parcelas futuras
         for (let i = 1; i < installments; i++) {
             const futureMonth = (currentMonth + i) % 12;
             const futureYear = currentYear + Math.floor((currentMonth + i) / 12);
@@ -735,7 +711,7 @@ async function addExpense(name, amount, category, type, installments = null) {
             };
             
             addExpenseToMonth(installmentExpense, futureMonth, futureYear, category);
-            await saveExpenseToSupabase(installmentExpense, category, futureMonth, futureYear);
+            saveExpenseToCloud(installmentExpense, category, futureMonth, futureYear);
         }
     }
     
@@ -761,19 +737,28 @@ async function removeExpense(category, expenseId) {
     const removed = removeExpenseFromMonth(category, expenseId, currentMonth, currentYear);
     
     if (removed) {
-        await removeExpenseFromSupabase(expenseId);
+        // Remove da nuvem
+        await removeExpenseFromCloud(expenseId);
+        
+        // Remove backup local
+        saveLocalData();
         
         const expense = removed;
         
-        // Handle different expense types for removal
+        // Lógica para remover despesas relacionadas (fixas ou parcelas)
         if (expense.type === 'fixa' || expense.type === 'parcelada') {
-            // Remove from all months
+            // Remove de todos os meses (localmente)
             Object.keys(gastosPorMes).forEach(year => {
                 Object.keys(gastosPorMes[year]).forEach(month => {
                     if (gastosPorMes[year][month][category]) {
+                        // Filtra removendo os relacionados
                         gastosPorMes[year][month][category] = gastosPorMes[year][month][category].filter(exp => 
                             exp.originalId !== expense.id && exp.id !== expense.id
                         );
+                        
+                        // NOTA: Para limpar completamente do Google Sheets as parcelas futuras, 
+                        // o ideal seria ter uma lógica de backend mais complexa. 
+                        // Por enquanto, deletamos apenas a selecionada no servidor e todas localmente.
                     }
                 });
             });
@@ -814,7 +799,7 @@ function getTotalGastoMes(month, year) {
     return total;
 }
 
-// ===== EXPENSES DISPLAY =====
+// ===== EXIBIÇÃO DE GASTOS =====
 function updateExpensesDisplay() {
     const expensesGrid = document.getElementById('expenses-grid');
     if (!expensesGrid) return;
@@ -869,7 +854,7 @@ function updateExpensesDisplay() {
                 
                 const expenseName = document.createElement('div');
                 expenseName.className = 'expense-name';
-                expenseName.innerHTML = `${expenseTypeIcons[expense.type]} ${expense.name}`;
+                expenseName.innerHTML = `${expenseTypeIcons[expense.type] || '🛒'} ${expense.name}`;
                 expenseInfo.appendChild(expenseName);
                 
                 // Add details for installments and fixed expenses
@@ -931,7 +916,7 @@ function updateExpensesDisplay() {
     });
 }
 
-// ===== FORM HANDLING =====
+// ===== MANIPULAÇÃO DE FORMULÁRIOS =====
 function handleExpenseForm(e) {
     e.preventDefault();
     
@@ -975,15 +960,15 @@ function handleLoginForm(e) {
     handleLogin(username);
 }
 
-// ===== UPDATE ALL DISPLAYS =====
+// ===== ATUALIZAÇÃO DE TODA A UI =====
 function updateAllDisplays() {
-    // Update income input
+    // Atualiza input de renda
     const incomeInput = document.getElementById('monthly-income');
     if (incomeInput) {
         incomeInput.value = monthlyIncome;
     }
     
-    // Update sliders
+    // Atualiza sliders
     categorias.forEach(categoria => {
         const slider = document.getElementById(`slider-${categoria.id}`);
         if (slider) {
@@ -991,7 +976,7 @@ function updateAllDisplays() {
         }
     });
     
-    // Update displays
+    // Atualiza todos os displays
     updatePercentageDisplays();
     updateAmounts();
     updateTotalPercentage();
@@ -1000,7 +985,7 @@ function updateAllDisplays() {
     updateDashboard();
 }
 
-// ===== SETUP FUNCTIONS =====
+// ===== FUNÇÕES DE SETUP (INICIALIZAÇÃO) =====
 function setupTabs() {
     const tabButtons = document.querySelectorAll('.tab-btn');
     
@@ -1072,7 +1057,7 @@ function setupLoginForm() {
 }
 
 function setupConfigControls() {
-    // Income input
+    // Input de renda
     const incomeInput = document.getElementById('monthly-income');
     if (incomeInput) {
         incomeInput.addEventListener('input', handleIncomeInput);
@@ -1093,14 +1078,14 @@ function setupConfigControls() {
     });
 }
 
-// ===== INITIALIZE APPLICATION =====
+// ===== INICIALIZAÇÃO DO APLICATIVO =====
 function initApp() {
-    console.log('Inicializando aplicativo de orçamento...');
+    console.log('Inicializando aplicativo de orçamento com Google Sheets...');
     
-    // Initialize theme
+    // Inicializa tema
     initTheme();
     
-    // Setup all components
+    // Setup de todos os componentes
     setupTabs();
     setupThemeToggle();
     setupDashboardNavigation();
@@ -1109,22 +1094,20 @@ function initApp() {
     setupLoginForm();
     setupConfigControls();
     
-    // Check user login and load data
+    // Verifica login e carrega dados
     checkUserLogin();
     
     console.log('Aplicativo inicializado com sucesso');
 }
 
-// Wait for DOM to be ready
+// Espera o DOM estar pronto
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initApp);
 } else {
     initApp();
 }
 
-// Save data periodically
+// Salva dados periodicamente (backup local)
 setInterval(() => {
-    if (currentUser) {
-        saveUserConfig();
-    }
-}, 30000); // Save every 30 seconds
+    saveLocalData();
+}, 30000); // Salva a cada 30 segundos
